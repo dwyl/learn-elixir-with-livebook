@@ -287,7 +287,7 @@ Atoms are also used to reference modules from `Erlang` libraries,
 including built-in ones. In fact, `Elixir` can natively run `Erlang` code
 
 ```elixir
-pi = :erlang.term_to_binary("3.14")
+pi = :erlang.term_to_binary(3.14)
 ```
 
 ```elixir
@@ -1573,10 +1573,42 @@ end)
 
 To time the execution of our code, we use the `Factorial.run` function to evaluate the execution time (ms) of the function `Factorial.facto/1`.
 
+> When running on fly.io, there are limitations due to the memory limits so you can't run higher values than 9_000. The fly.io instance has 1 CPU, but probably not your machine so we check the numbers of cores to avoid overflow and process down.
+
 ```elixir
-Factorial.run(:facto, [5_000]) / 1_000
+nb_input = Kino.Input.text("You can enter a value Input Label")
 ```
 
 ```elixir
-Factorial.run(:spawn, [5_000]) / 1_000
+max = 9_000
+n = Kino.Input.read(nb_input)
+n = if n == "", do: 1, else: n |> Integer.parse() |> elem(0)
+
+# prevent values too high if running on fly.io
+nb =
+  case n > max && :erlang.system_info(:logical_processors_available) == 1 do
+    true -> max
+    false -> n
+  end
+
+n_conc = Factorial.run(:spawn, [nb]) / 1_000
+
+IO.puts("Time (ms) per process for n= #{nb}")
+IO.puts("- concurrent: #{n_conc}")
+```
+
+```elixir
+n = Kino.Input.read(nb_input)
+n = if n == "", do: 1, else: n |> Integer.parse() |> elem(0)
+
+# prevent values too high if running on fly.io
+nb =
+  case n > max && :erlang.system_info(:logical_processors_available) == 1 do
+    true -> max
+    false -> n
+  end
+
+n_rec = Factorial.run(:facto, [nb]) / 1_000
+IO.puts("Time (ms) per process for n= #{nb}")
+IO.puts("- recursion: #{n_rec}")
 ```
