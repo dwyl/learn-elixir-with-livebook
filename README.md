@@ -6,7 +6,7 @@ Learn some `Elixir` with a `Livebook`. You have 2 ways to enjoy this Livebook
 
 ## 1. Run it locally
 
-If you have `Livebook` already installed, this is the best experience as you will use a more powerful computer (yours). Just click on the button below (or fork and run it):
+If you have `Livebook` already installed, this is the best experience as you will use a more powerful computer (yours 🥳). Just click on the button below (or fork and run it):
 
 [![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fdwyl%2Flearn-elixir-with-livebook%2Fblob%2Fmain%2Flearn-elixir-on-livebook.livemd)
 
@@ -15,14 +15,16 @@ If you have `Livebook` already installed, this is the best experience as you wil
 If you don't have `Elixir` nor `Livebook` installed, you can still run this `Livebook`. 
 
 
-Before you click away, you need to remember 2 points:
-  -  once there, look at the bottom for the link "see source" and showed below follow it,
-  -  and then select the file "dwyl-learn-elixir.livemd" and "join session".
+Before you click away (right click to keep this reminder page active 😉), you need to remember 2 points:
+  -  once there, look at the bottom for the link "see source" as showed below, 🤔
 
 <img width="355" alt="Screenshot 2023-01-13 at 10 23 14" src="https://user-images.githubusercontent.com/6793008/212285838-96ff4672-e36a-4a89-8efa-dee53a32a405.png">
 
+  -  and then select the file "dwyl-learn-elixir.livemd" and "join session". 🤗
 
-[![Run in Livebook](https://livebook.dev/badge/v1/gray.svg)](https://livebook.dev/run?url=https%3A%2F%2Fdwyl-learn-elixir.fly.dev%2F)
+Happy learning! 🥳
+
+👉 [![Run in Livebook](https://livebook.dev/badge/v1/gray.svg)](https://livebook.dev/run?url=https%3A%2F%2Fdwyl-learn-elixir.fly.dev%2F)
  
 
 
@@ -30,4 +32,4 @@ Before you click away, you need to remember 2 points:
 
 Easy peasy. Just click below:
 
-[<img width="626" alt="Screenshot 2023-01-13 at 10 15 23" src="https://user-images.githubusercontent.com/6793008/212283403-116dbf5c-eea4-4c16-88df-b9aba86e209a.png">](https://livebook.dev/)
+👉  [<img width="326" alt="Screenshot 2023-01-13 at 10 15 23" src="https://user-images.githubusercontent.com/6793008/212283403-116dbf5c-eea4-4c16-88df-b9aba86e209a.png">](https://livebook.dev/)
