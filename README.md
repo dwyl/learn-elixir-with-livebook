@@ -2,9 +2,7 @@
 
 This is still WIP!
 
-Learn some `Elixir` with a `Livebook`. 
-
-We have 2 ways to use this Livebook:
+Learn some `Elixir` with a `Livebook`. You have 2 ways to enjoy this Livebook
 
 ## Run it locally
 
