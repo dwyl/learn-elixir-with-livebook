@@ -1337,11 +1337,15 @@ Firstly a quote: [source](https://exercism.org/blog/concurrency-parallelism-in-e
 
 "Two concurrent things have independent execution contexts, but they won't always run in parallel. If you run 2 CPU-bound concurrent tasks with one CPU core they won't run in parallel. Concurrency doesn't always mean that it will be faster.
 
-In Elixir, processes are **not OS processes**, and have separate contexts (isolation). You can have hundreds of thousands of processes on a single CPU (lightweight). If your computer has **multiple cores**, Elixir will run processes on each of them in parallel.
+In Elixir, processes are **not OS processes**, and have separate contexts (isolation). You can have hundreds of thousands of processes on a single CPU. If your computer has **multiple cores**, Elixir will run processes on each of them in parallel.
 
 Something can run concurrently, but that doesn't mean it will be parallel, whereas if something is running in parallel, that means that it is running concurrently."
 
-The speedup is largely dependent on whether the task is IO- or CPU-bound, and whether there is more than 1 CPU core available.
+The speedup with concurrency is largely dependent on whether the task is IO- or CPU-bound, and whether there is more than 1 CPU core available.
+
+<!-- livebook:{"break_markdown":true} -->
+
+In the code below, we use a **[comprehension](https://elixir-lang.org/getting-started/comprehensions.html)** to enumerate over a [range](https://hexdocs.pm/elixir/1.14.2/Range.html). It is an iteration loop and uses the [for](https://hexdocs.pm/elixir/1.14.2/Kernel.SpecialForms.html#for/1) command. In the first loop, we iterate over the range `1..5` and ask to print the index and the time every 500ms. The index and time will appear sequentiall. In the second loop, we run concurrently processes by spawning functions. The PIDs will be printed immediately, and then all the processes will end all together.
 
 ```elixir
 sleep = fn i, t ->
@@ -1349,14 +1353,12 @@ sleep = fn i, t ->
   IO.puts("#{i}: #{Time.utc_now()}")
 end
 
+# single process
 for i <- 1..5, do: sleep.(i, 500)
 
+# concurrent processes
 for i <- 1..5, do: spawn(fn -> sleep.(i, 500) end)
 ```
-
-In the first example, the index and time will appear sequentially every 500ms. In the second example, the PIDs will be printed immediately, and then all the processes together.
-
-<!-- livebook:{"break_markdown":true} -->
 
 #### Factorial, example of concurrency
 
@@ -1380,7 +1382,7 @@ It is also note $4!$ in mathematics.
 
 <!-- livebook:{"break_markdown":true} -->
 
-Run the cell below. You should see 1, whilst probably the result is at least 4 on your computer. Parallelism on fly.io is not possible with this free tier, thus only concurrency can be used. If your computer has more than 1 core, then the BEAM (the Erlang virtual machine that runs the code) will automatically make in run parallel.
+Run the cell below. You should see 1, whilst probably the result is at least 4 on your computer. Parallelism on **fly.io** is not possible with this free tier, thus only concurrency can be used. If your computer has more than 1 core, then the BEAM (the Erlang virtual machine that runs the code) will automatically make in run parallel.
 
 ```elixir
 :erlang.system_info(:logical_processors_available)
@@ -1396,18 +1398,18 @@ Now, consider the following module that computes the factorial of a given number
 
 * via recursion, `Factorial.facto`,
 * via reduction, `Factorial.calc_product`,
-* and via concurrency, `Factorial.spawn` and `Factorial.worker`
+* and via concurrency, with `Factorial.spawn` and `Factorial.worker`
 
 We added a helper function at the end for the rendering.
 
-* the concurrent versions will calculate concurrently "chunked" subproducts. Given a number $n$, we build a list $[1,\dots, n]$  and group these numbers by say 4. Then we launch concurrently - spawn - plenty of functions that compute the  subproduct $n \times n+1 \times n+2 \times n+3$. If the computer has several cores, all these tiny computations will be parallelized by the BEAM. These spawned processes will send back the result to the main process. They are collected to compute the grand total product via a reduction. The version `spawn` uses `receive do` and `send`. The `worker` version uses the [Task](https://hexdocs.pm/elixir/1.14.2/Task.html) module.
+* the concurrent versions will calculate concurrently "chunked" subproducts. Given a number $n$, we build a list $[1,\dots, n]$  and group thme by 4: we have subgroups of 4 consecutive numbers. Then we launch concurrently - spawn - plenty of functions that compute the  subproduct $n \times n+1 \times n+2 \times n+3$. If the computer has several cores, all these tiny computations will be parallelized by the BEAM. These spawned processes will send back the result to the main process. They are collected to compute the grand total product via a reduction. The version `spawn` uses `receive do` and `send`. The `worker` version uses the [Task](https://hexdocs.pm/elixir/1.14.2/Task.html) module.
 
-* the recursion works simply by using the formula $n! = n\times (n-1)!$.In other words, a function that calls himself:
+* the recursion works simply by using the formula $n! = n\times (n-1)!$. In other words, a function that calls himself:
   $$
   \rm{factorial}(n) = n \cdot \rm{factorial}(n-1)
   $$
 
-* the `calc_product` works by reduction: sending the function `fn x, acc -> x * acc` to the list, and return the `acc`.
+* the `calc_product` works by reduction: sending the function `fn x, acc -> x * acc` to the list, and the result is accumulated in the `acc` variable.
 
 ```elixir
 chunk = 4
@@ -1440,8 +1442,8 @@ defmodule Factorial do
   def _spawn_function(list) do
     receive do
       sender ->
-        product = calc_product(list)
-        send(sender, product)
+        chunked_product = calc_product(list)
+        send(sender, chunked_product)
     end
   end
 
@@ -1490,8 +1492,16 @@ prod1.(2, 3) == prod2.(2, 3)
 > to be the reason for changes in time. Also these factorial functions are not
 > perfect and do not need to be. That is not what we are testing here.
 
+<!-- livebook:{"break_markdown":true} -->
+
+Let's run the two functions below:
+
 ```elixir
 Factorial.facto(11)
+```
+
+```elixir
+Factorial.calc_product(11)
 ```
 
 You just solved a factorial on a single process.
@@ -1542,19 +1552,22 @@ The number 4 itself is not important, it could have been 5, 10, or 1000. What is
 important about it, is that it influences the number of processes we will be spawning.
 The larger the size of the 'chunks' the fewer processes are spawned.
 
-Next, we map over the 'chunked' range and call the `spawn` function. This spawns a new process for each chunked list running the `_spawn_function/1`. 
-Afterwards, the process running the `spawn/1` function sends the newly created process a message and waits for a response message, in the `receive do` block.
+Now we have a list made of sublists of length 4. When we map over the list, an element will be a sublist, or 'chunked' range. The `Enum.map` will then `spawn` the `_spawn_function/1` function on each sublist.
+
+Afterwards, the (main) process running the `spawn/1` function sends the newly created process a message and waits for a response message, in the `receive do` block.
+
+Notice that the `Enum.map` accumulates the result of each function into a list. Since the waiting `receive do` returns a number, the subproduct, the output of `Enum.map` will be a list of subproducts.
 
 The `_spawn_function` function is pretty simple.
 
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
-def _spawn_function(list) do
+def _spawn_function(sublist) do
   receive do
     sender ->
-      product = calc_product(list)
-      send(sender, product)
+      chunked_product = calc_product(sublist)
+      send(sender, chunked_product)
   end
 end
 ```
@@ -1574,7 +1587,7 @@ The only exception is the last chunk, which may contain fewer elements:
 [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10]]
 ```
 
-For each chunked list we call `calc_product` and to calculate the final result, the factorial, once.
+For each chunked list we call `calc_product`.  and to calculate the final result, the factorial, once.
 
 Now that we have been through the code the only things left are to run the code and to time the code.
 
@@ -1590,9 +1603,7 @@ end)
 
 #### Using the `Task` module with `async_stream`
 
-This concurrent version `Factorial.worker/1` uses the [Task](https://elixir-lang.org/getting-started/processes.html#tasks) module, more precisely the routine [Task.async_stream](https://hexdocs.pm/elixir/1.14.2/Task.html#async_stream/3). It is an elaborated version of spawned versions. It makes written concurrent code very easy, as compared to the `spawn` version. Tt takes an enumerable - a list - and for each element spawns a function - our named `calc_product`  that reduces a chunked list to a subproduct - and it lazily returns a list of `{:ok, subproduct}`. Lazily means that it returns functions that will only be run once they are called. One way to call them is with `Enum.to_list`. In our case, they are called when we reduce this "pre-list" to a final prodcut.
-
-The `spawn` and `_span_function` will still be the most performant method, faster than `Task.async_stream` because the latter comes with overhead. It will outperform a single worker process such as the recursion or reduction version which are not concurrent, thus have no chance to be run in parallel. Parallelism (mutli-core) is of outmost importance for computation which are heavily CPU-bound operations. Note that IO-bound operations, among which we find web apps with HTTP requests benefit of concurrency only; Javascript is a famous example of a natively concurrent language.
+This concurrent version `Factorial.worker/1` uses the [Task](https://elixir-lang.org/getting-started/processes.html#tasks) module, more precisely the routine [Task.async_stream](https://hexdocs.pm/elixir/1.14.2/Task.html#async_stream/3). It is an abstraction over the spawned version. It makes writting concurrent code very easy, as compared to the `spawn` version. Tt takes an enumerable - a list - and for each element spawns a function - our named `calc_product` - that reduces a sublist to a subproduct. It lazily returns a list of functions that are waiting to be used. Each function itself returns a response in the form `{:ok, subproduct}`. Lazily means that it doesn't return an immediately usable response; the returned function will only be run once it is called. One way to call them is with `Enum.to_list`. In our case, this list of function are called when we further reduce this list by once again calling `calc_product`. It eventually calcualtes the grand product, the factorial.
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -1604,6 +1615,12 @@ def worker(n) do
   |> Enum.reduce(1, fn {:ok,p}, acc -> p*acc end)
 end
 ```
+
+#### A word about performance
+
+The `spawn` and `_span_function` will still be the most performant method, faster than `Task.async_stream` because the latter comes with overhead. It will outperform a single worker process such as the recursion or reduction version which are not concurrent, thus have no chance to be run in parallel.
+
+Parallelism (mutli-core) is of outmost importance for computations which are heavily CPU-bound operations. Note that IO-bound operations, among which we find web apps with HTTP requests benefit of concurrency only; Javascript is a famous example of a natively concurrent language.
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -1620,49 +1637,61 @@ nb_input = Kino.Input.text("You can enter a value Input Label")
 ```elixir
 max = 9_000
 n = Kino.Input.read(nb_input)
+# avoids blank values and parsing a string into a integer
 n = if n == "", do: 1, else: n |> Integer.parse() |> elem(0)
 
-# prevent values too high if running on fly.io
+# prevents from running too high values if running on fly.io
 nb =
   case n > max && :erlang.system_info(:logical_processors_available) == 1 do
     true -> max
     false -> n
   end
 
+# result
 n_conc = Factorial.run(:spawn, [nb]) / 1_000
 
+# output
 IO.puts("Time (ms) per process for n= #{nb}")
 IO.puts("- concurrent: #{n_conc}")
 ```
 
 ```elixir
 n = Kino.Input.read(nb_input)
+
+# avoids blank values and parsing a string into a integer
 n = if n == "", do: 1, else: n |> Integer.parse() |> elem(0)
 
-# prevent values too high if running on fly.io
+#  prevents from running too high values if running on fly.io
 nb =
   case n > max && :erlang.system_info(:logical_processors_available) == 1 do
     true -> max
     false -> n
   end
 
+# result
 n_rec = Factorial.run(:facto, [nb]) / 1_000
+
+## output
 IO.puts("Time (ms) per process for n= #{nb}")
 IO.puts("- recursion: #{n_rec}")
 ```
 
 ```elixir
 n = Kino.Input.read(nb_input)
+# avoids blank values and parsing a string into a integer
 n = if n == "", do: 1, else: n |> Integer.parse() |> elem(0)
 
-# prevent values too high if running on fly.io
+# prevents from running too high values if running on fly.io
 nb =
   case n > max && :erlang.system_info(:logical_processors_available) == 1 do
     true -> max
     false -> n
   end
 
+# result
 n_async = Factorial.run(:worker, [nb]) / 1_000
+
+# output
 IO.puts("Time (ms) per process for n= #{nb}")
 IO.puts("- async stream: #{n_async}")
 ```
