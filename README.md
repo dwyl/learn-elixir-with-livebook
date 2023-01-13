@@ -22,7 +22,8 @@ You (**right**-)click on the grey button **"Run in Livebook"** below.
 
 <img width="355" alt="Screenshot 2023-01-13 at 10 23 14" src="https://user-images.githubusercontent.com/6793008/212285838-96ff4672-e36a-4a89-8efa-dee53a32a405.png">
 
-  -  and finally, select the file "dwyl-learn-elixir.livemd" (it should be printed in green), and "join session". 🤗
+  -  and finally, select the file [dwyl-learn-elixir.livemd]. It should be printed in green, and "join session". 🤗
+   
 
 Happy learning! 🥳
 
