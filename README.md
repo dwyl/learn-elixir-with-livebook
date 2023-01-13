@@ -1,8 +1,8 @@
-# Learn Elixir with Livebook
+# Learn some Elixir with Livebook
 
-This is still WIP!
+> this is still WIP!
 
-Learn some `Elixir` with a `Livebook`. You have 2 ways to enjoy this Livebook
+You have 2 ways to enjoy this Livebook
 
 ## 1. Run it locally
 
