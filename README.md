@@ -4,13 +4,13 @@ This is still WIP!
 
 Learn some `Elixir` with a `Livebook`. You have 2 ways to enjoy this Livebook
 
-## Run it locally
+## 1. Run it locally
 
 If you have `Livebook` already installed, this is the best experience as you will use a more powerful computer (yours). Just click on the button below (or fork and run it):
 
 [![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fdwyl%2Flearn-elixir-with-livebook%2Fblob%2Fmain%2Flearn-elixir-on-livebook.livemd)
 
-## Run it the cloud
+## 2. Run it the cloud
 
 If you don't have `Elixir` nor `Livebook` installed, you can still run this `Livebook`. 
 
