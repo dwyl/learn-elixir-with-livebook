@@ -1,4 +1,4 @@
-# learn-elixir-on-livebook
+# Learn Elixir with Livebook
 
 This is still WIP!
 
