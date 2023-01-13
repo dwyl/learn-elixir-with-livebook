@@ -15,12 +15,14 @@ If you have `Livebook` already installed, this is the best experience as you wil
 If you don't have `Elixir` nor `Livebook` installed, you can still run this `Livebook`. 
 
 
-Before you click away (right click to keep this reminder page active 😉), you need to remember 2 points:
-  -  once there, look at the bottom for the link "see source" as showed below, 🤔
+You (**right**-)click on the grey button **"Run in Livebook"** below. 
+
+:heavy_exclamation_mark: You **right-click"** to keep this reminder page open 😉 because you will need to remember to do 2 things:
+  -  firstly, look at the bottom for the link "see source" as showed below, 🤔, and click.
 
 <img width="355" alt="Screenshot 2023-01-13 at 10 23 14" src="https://user-images.githubusercontent.com/6793008/212285838-96ff4672-e36a-4a89-8efa-dee53a32a405.png">
 
-  -  and then select the file "dwyl-learn-elixir.livemd" and "join session". 🤗
+  -  and finally, select the file "dwyl-learn-elixir.livemd" and "join session". 🤗
 
 Happy learning! 🥳
 
