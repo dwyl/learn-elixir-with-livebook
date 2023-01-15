@@ -2,17 +2,12 @@
 
 ```elixir
 Mix.install([
-  {:kino, "~> 0.7.0"}
+  {:kino, "~> 0.7.0"},
+  {:kino_vega_lite, "~> 0.1.7"}
 ])
 ```
 
 ## Introduction
-
-<a href="https://livebook.dev/run?url=https%3A%2F%2Fdwyl-learn-elixir.fly.dev%2F">
-  <img src="https://livebook.dev/badge/v1/blue.svg" alt="Run in Livebook" />
-</a>
-
-<!-- livebook:{"break_markdown":true} -->
 
 ### *Why*?
 
@@ -1302,28 +1297,34 @@ your **`Elixir`** projects.
 > Processes are isolated from each other, run concurrent to one another and communicate via message passing.
 > Processes are not only the basis for concurrency in **`Elixir`**, but they also provide the means for building distributed and fault-tolerant programs.
 
-Now that we have a definition, 
-let's start by spawning our first process.
+#### Some documentation
+
+* a nice video to watch about processes: [The Soul of Erlang and Elixir • Sasa Juric • GOTO 2019](https://youtu.be/JvBT4XBdoUE)
+
+* the [official documentation](https://elixir-lang.org/getting-started/processes.html)
+
+* a blog: [understand processes](https://www.erlang-solutions.com/blog/understanding-processes-for-elixir-developers/)
 
 ### Spawning a process
+
+Let's define a function.
 
 ```elixir
 defmodule Math2 do
   def add(a, b) do
-    IO.inspect(self(), label: "add process: ")
     (a + b) |> IO.inspect()
   end
 end
 ```
 
-We can `spawn` a process by:
+Now that we have a definition, let's start by spawning our first process. We can `spawn` a process by:
 
 * supplying an anonymous function
 * or via a declarative way `<module>, <function>, <args>`
 
 ```elixir
 spawn(Math2, :add, [1, 2]) |> IO.inspect()
-
+# equivalently:
 spawn(fn -> Math2.add(1, 2) end)
 ```
 
@@ -1362,12 +1363,7 @@ In a `Livebook`, there is a nice way to visualize the processes with the help of
 
 ```elixir
 IO.inspect(self())
-Kino.Process.render_seq_trace(fn -> Math2.add(2, 2) end)
-```
-
-```elixir
-IO.inspect(self(), label: "main process: ")
-Kino.Process.render_seq_trace(fn -> spawn(Math2, :add, [2, 3]) end)
+Kino.Process.render_seq_trace(fn -> spawn(Math2, :add, [2, 2]) end)
 ```
 
 ### Sending messages between processes
@@ -1396,7 +1392,7 @@ defmodule Math3 do
 
     spawn(Math3, :add, [n, n])
     |> send(self())
-    |> IO.inspect(label: "double sends his PID in the following message:  ")
+    |> IO.inspect(label: "double sends his PID:  ")
 
     receive do
       doubled ->
@@ -1412,6 +1408,32 @@ IO.inspect(self(), label: "main process: ")
 Math3.double(10)
 ```
 
+<!-- Learn more at https://mermaid-js.github.io/mermaid -->
+
+```mermaid
+
+sequenceDiagram
+    participant D as double
+    participant A as add
+    D->>A: SPAWN process 'add' with argument '[n,n]'
+    Note left of A: process 'add' is created with arg '[n,n]'
+    D->>A: SEND his PID: send( pid_D )
+    loop receive do
+        A->>A: RECEIVE do ( &handle_a/1 ) end
+    end
+    Note over A,A: this listener receives: "pid_D" <br/>  and returns: "send(pid_D, n + n)"
+    Note over A,A: handle_a = send(pid_D, n + n)
+    A->>D: SEND send(pid_D, n + n)
+    loop receive do
+        D->>D: RECEIVE do( &handle_d/1 ) end
+    end
+    Note over D,D: the listener receives: "n + n" <br/> and returns: "return n + n"
+
+
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
 Let's go through the code.
 
 We have a function called `double` This function spawns the `Math.add/2` function. Remember the spawn function returnes a PID. We pipe `|>` the "spawn" with a [`send/2`](https://hexdocs.pm/elixir/Kernel.html#send/2). This means the output of the spawn (the PID) is used as the first argument of `send`.
@@ -1426,12 +1448,6 @@ The `add/2` function also contains a listener  `receive`. This listener receives
 
 This will trigger the receive block in our double function. As mentioned
 above, it simply returns the message it receives which is the answer from add.
-
-<!-- livebook:{"break_markdown":true} -->
-
-We used the process tracer `Kino.Process.render_seq_trace/1` to visualize the message passing.
-
-VERY COOL. We just spawned a process which did a task for us and returned the data.
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -1472,7 +1488,7 @@ The speedup with concurrency is largely dependent on whether the task is IO- or 
 
 <!-- livebook:{"break_markdown":true} -->
 
-Let's give an example. In the code below, we use a **[comprehension](https://elixir-lang.org/getting-started/comprehensions.html)** to enumerate over a [range](https://hexdocs.pm/elixir/1.14.2/Range.html). It is an iteration loop and uses the [for](https://hexdocs.pm/elixir/1.14.2/Kernel.SpecialForms.html#for/1) command. In the first loop, we iterate over the range `1..5` and ask to print the index and the present time every 500ms. The index and time will appear sequentially. In the second loop, we run concurrently processes by spawning the function above. As a response, the PIDs will be printed immediately, and then all the processes will end all together 500ms after: **this is concurrency**.
+Let's give an example. In the code below, we use a **[comprehension](https://elixir-lang.org/getting-started/comprehensions.html)** to enumerate over a [range](https://hexdocs.pm/elixir/1.14.2/Range.html). It is an iteration loop and uses the [for](https://hexdocs.pm/elixir/1.14.2/Kernel.SpecialForms.html#for/1) command. In the first loop, we iterate over the range `1..4` and ask to print the index and the present time every 500ms. The index and time will appear sequentially. In the second loop, we iterate over the range `5..8` and run concurrently processes by spawning the function above. As a response, the PIDs will be printed immediately, and then all the processes will end all together 500ms after: **this is concurrency**.
 
 ```elixir
 sleep = fn i, t ->
@@ -1481,13 +1497,15 @@ sleep = fn i, t ->
 end
 
 # single process
-for i <- 1..5, do: sleep.(i, 500)
+Kino.Process.render_seq_trace(fn -> spawn(fn -> for i <- 1..4, do: sleep.(i, 500) end) end)
 
 # concurrent processes
-for i <- 1..5, do: spawn(fn -> sleep.(i, 500) end)
+Kino.Process.render_seq_trace(fn ->
+  for i <- 5..8, do: spawn(fn -> sleep.(i, 500) end)
+end)
 ```
 
-#### Factorial, example of concurrency
+## Concurreny with the factorial
 
 In the example below we will aim to see exactly how **concurrency** can be used to
 speed up a function (and in turn, hopefully a project).
@@ -1722,7 +1740,7 @@ Let's see how many processes are run when we evaluate `Factorial.spawn(11)` with
 
 ```elixir
 Kino.Process.render_seq_trace(fn ->
-  Factorial.spawn(10)
+  Factorial.spawn(11)
 end)
 ```
 
@@ -1741,19 +1759,25 @@ def worker(n) do
 end
 ```
 
+<!-- livebook:{"break_markdown":true} -->
+
 #### A word about performance
 
-The `spawn` and `_span_function` will still be the most performant method for big numbers, faster than `Task.async_stream` because the latter comes with overhead. When the number to evaluate is small, it might not be more performant. When you are using a single core machine like the one used here on Fly.io, the results might be opposite since there is no chance to run computations in parallel.
+The concurrent `spawn` will be the most performant method for big numbers, even a bit faster than `Task.async_stream` because the latter comes with some overhead. When the number to evaluate is small, then the simple recursion function will be the most performant.
+
+When you are using a single core machine like the one used here on Fly.io, the results might be different as there is no chance to run computations in parallel.
 
 Parallelism (mutli-core) is of outmost importance for computations which are heavily CPU-bound operations. Note that IO-bound operations, among which we find web apps with HTTP requests benefit of concurrency only; Javascript is a famous example of a natively concurrent language.
 
-<!-- livebook:{"break_markdown":true} -->
+```elixir
+Kino.Process.render_seq_trace(fn -> Factorial.worker(8) end)
+```
 
 To time the execution of our code, we use the `Factorial.run` function to evaluate the execution time (ms) of the function `Factorial.facto/1`. It is a wrapper of the routine `:timer.tc`.
 
 > Note: the librabry [benchee](https://github.com/bencheeorg/benchee) can be used in `Elixir` scripts (via `IEx`) but the module `Kino_benchee` is not yet available.
 
-> When running on fly.io, there are limitations due to the memory limits so you can't run higher values than 9_000. The fly.io instance has 1 CPU, but probably not your machine so we check the numbers of cores to avoid overflow and process down.
+> ❗❗ When running on fly.io, there are limitations due to the memory limits so you can't run higher values than 9_000. The fly.io instance has 1 CPU, but probably not your machine so we check the numbers of cores to avoid overflow and process down.
 
 ```elixir
 nb_input = Kino.Input.text("You can enter a value Input Label")
@@ -1774,43 +1798,30 @@ nb =
 
 # result
 n_conc = Factorial.run(:spawn, [nb]) / 1_000
-
+n_async = Factorial.run(:worker, [nb]) / 1_000
+n_rec = Factorial.run(:facto, [nb]) / 1_000
 # output
 IO.puts("Time (ms) per process for n= #{nb} with a chunk size of #{chunk}")
 IO.puts("- concurrent: #{n_conc}")
-```
-
-```elixir
-# result
-n_async = Factorial.run(:worker, [nb]) / 1_000
-
-# output
-IO.puts("Time (ms) per process for n= #{nb} with a chunk size of #{chunk}")
 IO.puts("- async stream: #{n_async}")
+IO.puts("- recursion: #{n_rec}")
 ```
 
-```elixir
-# result
-# n_rec = Factorial.run(:facto, [nb]) / 1_000
-
-## output
-# IO.puts("Time (ms) per process for n= #{nb} with a chunk size of #{chunk}")
-# IO.puts("- recursion: #{n_rec}")
-```
+#### One step further
 
 We can play a bit more. In the previous example, we chunked the list to spawn a lot of process to compute subproducts, and then simply computed the grand product by reducing the new list.
 
-We can do better with recursion. Once we get a sublist of products, why not reusing the technic to produce a sub-sublist, and redo this until we get a list of legnth `chunk_length_size`? To better understand, for `n=11` and a chunk size of 2, do something like:
+We can do better with recursion. Once we get a sublist of products, why not reusing the technic to produce a sub-sublist, and redo this until we get a list of legnth `chunk_length_size`? To better understand, take `n=11` and a chunk size of 2; the idea is to do the following:
 
 ```
-1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 [2, 12, 30, 56, 90, 11]
 [24, 1680, 990]
 [40320, 990]
-39916800
+[39916800]
 ```
 
-We can do this quite easily with recursion: just call back the function.
+The bigger the number we want to compute, the more efficient this will be. We can do this quite easily with recursion: just call back the function.
 
 ```elixir
 chunk = 10
@@ -1818,15 +1829,18 @@ chunk = 10
 defmodule FactorialPlus do
   @chunk chunk
 
+  # takes an integer and returns the list version of this function
   def spawn(n) when is_integer(n) do
     Enum.to_list(1..n)
     |> FactorialPlus.spawn()
   end
 
+  # recursion stop
   def spawn(list) when is_list(list) and length(list) == 1 do
     List.first(list)
   end
 
+  # "list" version
   def spawn(list) when is_list(list) do
     list
     |> Enum.chunk_every(@chunk)
@@ -1838,11 +1852,11 @@ defmodule FactorialPlus do
         chunked_product -> chunked_product
       end
     end)
+    # <------ recursion call
     |> FactorialPlus.spawn()
-
-    # |> calc_product()
   end
 
+  # subproduct of size "chunk" calculation
   def _spawn_function(list) do
     receive do
       sender ->
@@ -1853,22 +1867,29 @@ defmodule FactorialPlus do
 
   ####### using Task module ############
 
-  def worker(n) when is_integer(n) do
-    Enum.to_list(1..n) |> FactorialPlus.worker()
+  # takes an integer and returns the list version of this function
+  def worker(n, chunk_size \\ @chunk)
+
+  def worker(n, chunk_size) when is_integer(n) do
+    Enum.to_list(1..n) |> FactorialPlus.worker(chunk_size)
   end
 
-  def worker(l) when is_list(l) and length(l) == 1, do: List.first(l)
+  # recursion stop
+  def worker(l, _chunk_size) when is_list(l) and length(l) == 1, do: List.first(l)
 
-  def worker(list) when is_list(list) do
+  # list version
+  def worker(list, chunk_size) when is_list(list) do
     list
-    |> Enum.chunk_every(@chunk)
+    |> Enum.chunk_every(chunk_size)
     |> Task.async_stream(&FactorialPlus.calc_product/1)
     |> Enum.map(fn {:ok, p} -> p end)
-    |> FactorialPlus.worker()
+    # <---- recursion call
+    |> FactorialPlus.worker(chunk_size)
   end
 
   def calc_product(list), do: Enum.reduce(list, 1, &(&1 * &2))
 
+  # Time measurement helper
   def run(f_name, args) do
     :timer.tc(FactorialPlus, f_name, args)
     # only displays the time as I didn't want to log numbers that could have thousands of digits
@@ -1877,16 +1898,93 @@ defmodule FactorialPlus do
 end
 ```
 
-```elixir
-nb = 150_000
-n_spawn_plus = FactorialPlus.run(:spawn, [nb]) / 1_000
+❗❗ Limit yourself to say 8000 if you run this in the cloud!
 
-# output
-IO.puts("Time (ms) per process for n= #{nb} with a chunk size of #{chunk}")
-IO.puts("- spawn recursion: #{n_spawn_plus}")
+```elixir
+form_recursive =
+  Kino.Control.form(
+    [
+      chunk: Kino.Input.text("Chunk size"),
+      n: Kino.Input.text("Compute the factorial of:")
+    ],
+    submit: "Run"
+  )
 ```
 
 ```elixir
-n_worker_plus = FactorialPlus.run(:worker, [nb]) / 1_000
-IO.puts("- task recursion: #{n_worker_plus}")
+frame = Kino.Frame.new() |> Kino.render()
+
+Kino.Control.stream(form_recursive)
+|> Kino.listen(nil, fn %{data: %{n: n, chunk: chunk}}, _res ->
+  n = Integer.parse(n) |> elem(0)
+  fps = FactorialPlus.run(:spawn, [n]) / 1_000
+  fs = Factorial.run(:spawn, [n]) / 1_000
+
+  Kino.Frame.append(frame, number: n, chunk: chunk, spawn_recursive: fps)
+  Kino.Frame.append(frame, number: n, chunk: chunk, spawn: fs)
+
+  {:cont, nil}
+end)
+```
+
+## Plot
+
+#### Let's plot
+
+We want to visualize the computation time for a given number. With the Livebook, we can do this easily with the "smart cell" `Chart`. The module `VegaLite` needs data in the form of the map below:
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+%{ 
+  x: [500, 1000, 1500, ..., n],
+  y: [...time_to_compute factorial(n)...]
+}
+```
+
+We need to measure the time taken to compute each factorial from 1 to $n$. We save the data every $1000$ counts.
+Using concurrency to run all these functions, some `Task.async_stream(range, fn i -> time(factorial(i)) end)`, doesn't help as the timer needs to be run as a single process. We will plot concurrent and single process (reduction).
+
+If you run this on Fly.io, limit $n$ to $8000$ maximum.
+
+```elixir
+n = 20_000
+
+defmodule Plot do
+  @i 1_000
+
+  def plot(f, n) do
+    x = @i..n//@i |> Enum.to_list()
+
+    y =
+      Enum.map(x, fn i ->
+        Factorial.run(f, [i]) / 1_000
+      end)
+
+    %{x: x, y: y}
+  end
+end
+
+data_conc = Plot.plot(:worker, n)
+data_single = Plot.plot(:calc_product, n)
+```
+
+```elixir
+VegaLite.new(
+  width: 400,
+  height: 400,
+  title: "Factorial computation time, concurrent vs single process"
+)
+|> VegaLite.layers([
+  VegaLite.new()
+  |> VegaLite.data_from_values(data_conc, only: ["x", "y"])
+  |> VegaLite.mark(:point)
+  |> VegaLite.encode_field(:x, "x", type: :quantitative)
+  |> VegaLite.encode_field(:y, "y", type: :quantitative),
+  VegaLite.new()
+  |> VegaLite.data_from_values(data_single, only: ["x", "y"])
+  |> VegaLite.mark(:line)
+  |> VegaLite.encode_field(:x, "x", type: :quantitative)
+  |> VegaLite.encode_field(:y, "y", type: :quantitative)
+])
 ```
