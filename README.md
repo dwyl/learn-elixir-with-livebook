@@ -2,13 +2,25 @@
 
 > this is still WIP!
 
-You have 2 ways to enjoy this Livebook
+You have 3 ways to enjoy this Livebook
 
 ## 1. Run it locally
 
-If you have `Livebook` already installed, this is the best experience as you will use a more powerful computer (yours 🥳). Just click on the button below (or fork and run it):
+- If you have `Livebook` already installed, this is the best experience as you will use a more powerful computer (yours 🥳). Just click on the button below (or fork and run it):
 
 [![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fdwyl%2Flearn-elixir-with-livebook%2Fblob%2Fmain%2Flearn-elixir-on-livebook.livemd)
+
+- If you have `Docker` installed, no need to install `Elixir` or `Livebook`. Launch `Docker` and run the `Livebook` image:
+
+```
+docker run -p 8080:8080 -p 8081:8081 --pull always -e LIVEBOOK_PASSWORD="securesecret" livebook/livebook
+```
+
+Open the browser, navigate to `localhost:8080`, enter the password "securesecret", and upload the file:
+
+**[learn-elixir-on-livebook.livemd]**
+
+or paste [this URL](https://github.com/dwyl/learn-elixir-with-livebook/blob/main/learn-elixir-on-livebook.livemd) from this repo and you are done.
 
 ## 2. Run it the cloud
 
