@@ -16,6 +16,12 @@ You have 3 ways to enjoy this Livebook
 docker run -p 8080:8080 -p 8081:8081 --pull always -e LIVEBOOK_PASSWORD="securesecret" livebook/livebook
 ```
 
+and in another terminal you launch the browser (you will need to authneticate with "securesecret"):
+
+```
+open http://localhost:8080/import?url=https://github.com/dwyl/learn-elixir-with-livebook/blob/main/learn-elixir-on-livebook.livemd
+```
+
 Open the browser, navigate to `localhost:8080`, enter the password "securesecret", and upload the file:
 
 **[learn-elixir-on-livebook.livemd]**
