@@ -22,11 +22,6 @@ and in another terminal you launch the browser (you will need to authneticate wi
 open http://localhost:8080/import?url=https://github.com/dwyl/learn-elixir-with-livebook/blob/main/learn-elixir-on-livebook.livemd
 ```
 
-Open the browser, navigate to `localhost:8080`, enter the password "securesecret", and upload the file:
-
-**[learn-elixir-on-livebook.livemd]**
-
-or paste [this URL](https://github.com/dwyl/learn-elixir-with-livebook/blob/main/learn-elixir-on-livebook.livemd) from this repo and you are done.
 
 ## 2. Run it the cloud
 
