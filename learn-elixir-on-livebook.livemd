@@ -565,6 +565,10 @@ end
 ExMod2.print_b()
 ```
 
+Note that this turns the function to be impure; if `b` changes, the n the result of `ExMod2.print_b` changes. You can consider them as environmental variables: you may need to use them in a controlled way.
+
+<!-- livebook:{"break_markdown":true} -->
+
 #### Example in a controle flow: `if`
 
 The control flow `if` below uses the variable `n`. It is in the scope, accessible. The macro `if` is itself a function that returns something.
@@ -1920,7 +1924,7 @@ To time the execution of our code, we use the `Factorial.run` function to evalua
 nb_input = Kino.Input.text("You can enter a value for n")
 ```
 
-<!-- livebook:{"attrs":{"source":"max = 9_000\nchunk = 4\nn = Kino.Input.read(nb_input)\n# avoids blank values and parsing a string into a integer\nn = if n == \"\", do: 1, else: n |> Integer.parse() |> elem(0)\n\n# prevents from running too high values if running on fly.io\nnb =\n  case n > max && :erlang.system_info(:logical_processors_available) == 1 do\n    true -> max\n    false -> n\n  end\n\n# result\nn_conc = Factorial.run(:spawn, [nb]) / 1_000\nn_async = Factorial.run(:worker, [nb]) / 1_000\nn_rec = Factorial.run(:facto, [nb]) / 1_000\n# output\nIO.puts(\"Time (ms) per process for n= #{nb} with a chunk size of #{chunk}\")\nIO.puts(\"- concurrent: #{n_conc}\")\nIO.puts(\"- async stream: #{n_async}\")\nIO.puts(\"- recursion: #{n_rec}\")","title":"Hidden Cell that computes differents versions of hte factorial"},"chunks":null,"kind":"Elixir.HiddenCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"source":"max = 9_000\nchunk = 4\nn = Kino.Input.read(nb_input)\n# avoids blank values and parsing a string into a integer\nn = if n == \"\", do: 1, else: n |> Integer.parse() |> elem(0)\n\n# prevents from running too high values if running on fly.io\nnb =\n  case n > max && :erlang.system_info(:logical_processors_available) == 1 do\n    true -> max\n    false -> n\n  end\n\n# result\nn_conc = Factorial.run(:spawn, [nb]) / 1_000\nn_async = Factorial.run(:worker, [nb]) / 1_000\nn_rec = Factorial.run(:facto, [nb]) / 1_000\nn_tail_rec = Factorial.run(:tailrec, [nb]) / 1_000\n# output\nIO.puts(\"Time (ms) per process for n= #{nb} with a chunk size of #{chunk}\")\nIO.puts(\"- concurrent: #{n_conc}\")\nIO.puts(\"- async stream: #{n_async}\")\nIO.puts(\"- recursion: #{n_rec}\")\nIO.puts(\"- tail recursion: #{n_tail_rec}\")","title":"Hidden Cell that computes differents versions of hte factorial"},"chunks":null,"kind":"Elixir.HiddenCell","livebook_object":"smart_cell"} -->
 
 ```elixir
 max = 9_000
@@ -1940,11 +1944,13 @@ nb =
 n_conc = Factorial.run(:spawn, [nb]) / 1_000
 n_async = Factorial.run(:worker, [nb]) / 1_000
 n_rec = Factorial.run(:facto, [nb]) / 1_000
+n_tail_rec = Factorial.run(:tailrec, [nb]) / 1_000
 # output
 IO.puts("Time (ms) per process for n= #{nb} with a chunk size of #{chunk}")
 IO.puts("- concurrent: #{n_conc}")
 IO.puts("- async stream: #{n_async}")
 IO.puts("- recursion: #{n_rec}")
+IO.puts("- tail recursion: #{n_tail_rec}")
 ```
 
 ### One step further: recursion with `Elixir`
@@ -1971,19 +1977,20 @@ We can do better with recursion. Once we get a sublist of products, why not reus
 Given $n$, with the standard computation, we have $n-1$ multiplications. If $n=14$, we have $13$ multiplications. When we chunk, we have the same numbers of multiplications. However, we have $n_1=\rm{div}(n,c)+ 1=5$ async processes to compute $p_1=(c-1)\times \rm{div}(n,c)+1$ mutiplications of $c$ consecutive numbers. Let $n=14$ and $c=3$, we have $n_1=\rm{div}(n,c)+1 =5$ processes, thus $n_1$ subproducts and $p_1=2\times 4+1=9$ async multiplications out of $13$.
 
 We can repeat: since $\rm{rem}(5,3) \neq 0$, we can make $n_2=\rm{div}(n_1,c)+1$ async processes to compute $p_2=(c-1)\times\rm{div}(n_1,c)+1$ async multiplications. Numerically, $n_2=2$ processes and $p_2=3$ asnyc multiplications. Only one chunk remains, thus $1$ process and $1$ multiplication. In total, we have launched $5+2+1=8$ processes to handle $13$ async multiplications.
-</Details>
+</details>
 
 #### Example of recursion with `Elixir`: compute the sequence of processes
 
 We can compute the number of spawned processes. As the algorithm above suggests, the code is naturally a [recursion](https://elixir-lang.org/getting-started/recursion.html). Note how we need to reuse the header of a function with a **guard clause**. This first clause makes the code to stop, the second and third add $1$ or not to the count if the remainder is zero or not. Also note that the ordering is important, as you want to hit the stop condition first as the code will pattern match with it first: if we place the stop condition at the end, then the header with no guard clause will always match and the recursion never stops.
 
-Firstly, this is how you can add an element as the first element of a list:
-</details>
+Firstly, recall how you can preprend an element as the first element of a list:
 
 ```elixir
 list = [3, 2, 1]
 [4 | list]
 ```
+
+The code of this algorithm:
 
 ```elixir
 defmodule Serie do
@@ -2204,25 +2211,26 @@ You can use the library [benchee](https://github.com/bencheeorg/benchee) to benc
 
 <!-- livebook:{"break_markdown":true} -->
 
-We pass a map `%{ "name" => function to evaluate, ...}` to the function `Benchee.run/2`
+We pass the functions to test as maps `%{ "name" => function to evaluate, ...}` to the function `Benchee.run/2`
 
 ```elixir
 test? = true
-max = 15_000
+max = 10_000
 
-if test?, do:
-Benchee.run(
-  %{
-    "concurrent_spawn" => &Factorial.spawn/1,
-    "concurrent_task" => &Factorial.worker/1 end,
-    "single_process" => &Factorial.facto/1 end,
-    "concurrent_spawn_recursive" => &FactorialPlus.spawn/1 end,
-    "concurrent_task_recursive" => &FactorialPlus.worker/1 end,
-    "concurrent_non_recursive" => &Factorial.spawn/1 end
-  },
-  memory_time: 2,
-  inputs: [small: 1_000, larger: max]
-)
+if test?,
+  do:
+    Benchee.run(
+      %{
+        "concurrent_spawn" => &Factorial.spawn/1,
+        "concurrent_task" => &Factorial.worker/1,
+        "single_process" => &Factorial.facto/1,
+        "concurrent_spawn_recursive" => &FactorialPlus.spawn/1,
+        "concurrent_task_recursive" => &FactorialPlus.worker/1,
+        "concurrent_non_recursive" => &Factorial.spawn/1
+      },
+      memory_time: 2,
+      inputs: [small: 1_000, larger: max]
+    )
 ```
 
 ## Plot
@@ -2308,12 +2316,6 @@ VegaLite.new(
   |> VegaLite.encode_field(:x, "number", type: :quantitative, title: "number")
   |> VegaLite.encode_field(:y, "time", type: :quantitative, title: "time(ms)")
   |> VegaLite.encode_field(:color, "group", type: :nominal),
-  # VegaLite.new()
-  # |> VegaLite.data_from_values(data_conc, only: ["number", "time", "group"])
-  # |> VegaLite.mark(:point)
-  # |> VegaLite.encode_field(:x, "number", type: :quantitative, title: "number")
-  # |> VegaLite.encode_field(:y, "time", type: :quantitative, title: "time(ms)", scale: [type: :log])
-  # |> VegaLite.encode_field(:color, "group", type: :nominal),
   VegaLite.new()
   |> VegaLite.data_from_values(data_conc_rec, only: ["number", "time", "group"])
   |> VegaLite.mark(:line)
