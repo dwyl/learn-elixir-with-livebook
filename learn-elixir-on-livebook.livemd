@@ -1673,7 +1673,7 @@ Now, consider the following module that computes the factorial of a given number
 
 * via recursion, `Factorial.facto`,
 * via reduction, `Factorial.calc_product`,
-* and via concurrency, with `Factorial.spawn` and `Factorial.worker`
+* and via concurrency, with `Factorial.spawn` and `Factorial.stream`
 
 We added a helper function at the end for the rendering.
 
@@ -1689,7 +1689,7 @@ We added a helper function at the end for the rendering.
 We have 2 concurrent versions:
 
 * one with `spawn` that uses the message passing `receive do` and `send`,
-* one that uses the more elaborate [Task](https://hexdocs.pm/elixir/1.14.2/Task.html) module. We can `receive do` and `send` in one go, and is more robust, handle errors etc...
+* one that uses the [Stream](https://hexdocs.pm/elixir/1.14.3/Stream.html#content) module. This generates concurrency and is designed ofr handling data.
 
 ```elixir
 chunk = 4
@@ -1720,12 +1720,13 @@ defmodule Factorial do
     end
   end
 
+  ## Reduction ######################################
   @doc """
+  Used on the single process, the last loop of "spawn"
+
     iex> Factorial.calc_product(4)
     24
   """
-
-  # used on the single process, the last loop of "spawn"
   def calc_product(n) when is_integer(n) do
     Enum.reduce(1..n, 1, fn x, acc -> x * acc end)
   end
@@ -1742,17 +1743,19 @@ defmodule Factorial do
   def facto(0), do: 1
   def facto(n), do: n * facto(n - 1)
 
-  # concurrent with Task module ##########################
+  # concurrent with Stream module ##########################
 
   @doc """
-    iex> Factorial.worker(4)
+  Concurrenct with Stream
+    iex> Factorial.stream(4)
     24
   """
-  def worker(n) do
+  def stream(n) do
     1..n
-    |> Enum.chunk_every(@chunk)
-    |> Task.async_stream(&calc_product/1)
-    |> Enum.reduce(1, fn {:ok, p}, acc -> p * acc end)
+    |> Stream.chunk_every(10)
+    |> Stream.map(&calc_product/1)
+    |> Enum.to_list()
+    |> Enum.reduce(1, &(&1 * &2))
   end
 
   ### Helper
@@ -1885,18 +1888,19 @@ Kino.Process.render_seq_trace(fn ->
 end)
 ```
 
-#### Using the `Task` module with `async_stream`
+#### Using the `Stream` module
 
-This concurrent version `Factorial.worker/1` uses the [Task](https://elixir-lang.org/getting-started/processes.html#tasks) module, more precisely the routine [Task.async_stream](https://hexdocs.pm/elixir/1.14.2/Task.html#async_stream/3). It is an abstraction over the spawned version. It spawns and receives in one go. It makes writting concurrent code very easy, as compared to the `spawn` version or the more elaborated `Task.asnyc` and `Task.await` version. It takes an enumerable - a list - and for each element of this list (an element is a sublist or chunked list) spawns a function - `calc_product` - that reduces the sublist to a subproduct. It lazily returns a list of functions that are waiting to be used. Each function returns a response in the form `{:ok, subproduct}`. Lazily means that it doesn't returns an immediately usable response but rather a function that returns a response; the returned function will only be run once it is called. In our case, these functions are executed when we further apply a reduction on this list: we there once again run a reduction to accumulate the product but on the list of subproducts. This eventually calculates the grand product, the factorial.
+This concurrent version `Factorial.stream/1` uses the [Stream](https://hexdocs.pm/elixir/1.14.3/Stream.html#content) module. This allows lazy evaluation. Lazily means that it doesn't returns an immediately usable response but rather a function that returns a response; the returned function will only be run once it is called. In our case, these functions are executed when we further apply a reduction on this list: we there once again run a reduction to accumulate the product but on the list of subproducts. This eventually calculates the grand product, the factorial.
 
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
-def worker(n) do
-  1..n 
-  |> Enum.chunk_every(@chunk)
-  |> Task.async_stream(&calc_product/1)
-  |> Enum.reduce(1, fn {:ok,p}, acc -> p*acc end)
+def stream(n) do
+  1..n
+    |> Stream.chunk_every(10)
+    |> Stream.map(&calc_product/1)
+    |> Enum.to_list()
+    |> Enum.reduce(1, &(&1*&2))
 end
 ```
 
@@ -1904,17 +1908,15 @@ end
 
 #### A word about performance
 
-The concurrent `spawn` will be the most performant method for big numbers, even faster than the `Task.async_stream` because the latter comes with some overhead. When the number to evaluate is small, then the simple recursion function will be the most performant (see the benchmark tests further).
+Performance will largely depend upon your machine, in particular the number of cores for parallelisation. The concurrent `stream` will be the most performant method for big numbers. It runs concurrently (and parallel when possible) and has no overhead when compared to `spawn`. When the number to evaluate is small, then the simple recursion function will be the most performant (see the benchmark tests further).
 
 When you are using a single core machine like the one used here on **Fly.io**, the results might be different as there is no chance to run computations in parallel.
 
 Parallelism (mutli-core) is of outmost importance for computations which are heavily CPU-bound operations. Note that IO-bound operations, among which we find web apps with HTTP requests benefit of concurrency only; Javascript is a famous example of a natively concurrent language.
 
-```elixir
-Kino.Process.render_seq_trace(fn -> Factorial.worker(8) end)
-```
+<!-- livebook:{"break_markdown":true} -->
 
-To time the execution of our code, we use the `Factorial.run` function to evaluate the execution time (ms) of the function `Factorial.facto/1`. It is a wrapper of the routine `:timer.tc`.
+To time the execution of our code, we use the `Factorial.run` function to evaluate the execution time (ms) of the function `Factorial.facto/1`. It is a wrapper of the routine `:timer.tc`. We further use the package [benchee](https://github.com/bencheeorg/benchee).
 
 > ❗❗ When running on fly.io, there are limitations due to the memory limits so you can't run higher values than 9_000. The fly.io instance has 1 CPU, but probably not your machine so we check the numbers of cores to avoid overflow and process down.
 
@@ -1924,7 +1926,7 @@ To time the execution of our code, we use the `Factorial.run` function to evalua
 nb_input = Kino.Input.text("You can enter a value for n")
 ```
 
-<!-- livebook:{"attrs":{"source":"max = 9_000\nchunk = 4\nn = Kino.Input.read(nb_input)\n# avoids blank values and parsing a string into a integer\nn = if n == \"\", do: 1, else: n |> Integer.parse() |> elem(0)\n\n# prevents from running too high values if running on fly.io\nnb =\n  case n > max && :erlang.system_info(:logical_processors_available) == 1 do\n    true -> max\n    false -> n\n  end\n\n# result\nn_conc = Factorial.run(:spawn, [nb]) / 1_000\nn_async = Factorial.run(:worker, [nb]) / 1_000\nn_rec = Factorial.run(:facto, [nb]) / 1_000\nn_tail_rec = Factorial.run(:tailrec, [nb]) / 1_000\n# output\nIO.puts(\"Time (ms) per process for n= #{nb} with a chunk size of #{chunk}\")\nIO.puts(\"- concurrent: #{n_conc}\")\nIO.puts(\"- async stream: #{n_async}\")\nIO.puts(\"- recursion: #{n_rec}\")\nIO.puts(\"- tail recursion: #{n_tail_rec}\")","title":"Hidden Cell that computes differents versions of hte factorial"},"chunks":null,"kind":"Elixir.HiddenCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"source":"max = 9_000\nchunk = 4\nn = Kino.Input.read(nb_input)\n# avoids blank values and parsing a string into a integer\nn = if n == \"\", do: 1, else: n |> Integer.parse() |> elem(0)\n\n# prevents from running too high values if running on fly.io\nnb =\n  case n > max && :erlang.system_info(:logical_processors_available) == 1 do\n    true -> max\n    false -> n\n  end\n\n# result\nn_conc = Factorial.run(:spawn, [nb]) / 1_000\nn_stream = Factorial.run(:stream, [nb]) / 1_000\nn_rec = Factorial.run(:facto, [nb]) / 1_000\n#n_task = Factorial.run(:worker_task, [nb]) / 1000\n# output\nIO.puts(\"Time (ms) per process for n= #{nb} with a chunk size of #{chunk}\")\nIO.puts(\"- concurrent: #{n_conc}\")\nIO.puts(\"- stream: #{n_stream}\")\nIO.puts(\"- recursion: #{n_rec}\")\n#IO.puts(\"- task_stream: #{n_task}\")","title":"Hidden Cell that computes differents versions of hte factorial"},"chunks":null,"kind":"Elixir.HiddenCell","livebook_object":"smart_cell"} -->
 
 ```elixir
 max = 9_000
@@ -1942,15 +1944,15 @@ nb =
 
 # result
 n_conc = Factorial.run(:spawn, [nb]) / 1_000
-n_async = Factorial.run(:worker, [nb]) / 1_000
+n_stream = Factorial.run(:stream, [nb]) / 1_000
 n_rec = Factorial.run(:facto, [nb]) / 1_000
-n_tail_rec = Factorial.run(:tailrec, [nb]) / 1_000
+# n_task = Factorial.run(:worker_task, [nb]) / 1000
 # output
 IO.puts("Time (ms) per process for n= #{nb} with a chunk size of #{chunk}")
 IO.puts("- concurrent: #{n_conc}")
-IO.puts("- async stream: #{n_async}")
+IO.puts("- stream: #{n_stream}")
 IO.puts("- recursion: #{n_rec}")
-IO.puts("- tail recursion: #{n_tail_rec}")
+# IO.puts("- task_stream: #{n_task}")
 ```
 
 ### One step further: recursion with `Elixir`
@@ -2127,30 +2129,30 @@ defmodule FactorialPlus do
     end
   end
 
-  ####### using Task module ############
+  ####### using Stream module ############
 
   @doc """
   Takes an integer and returns the list version of this function
-    iex> FactorialPlus.worker(4)
+    iex> FactorialPlus.stream(4)
     24
   """
-  def worker(n, chunk_size \\ @chunk)
+  def stream(n, chunk_size \\ @chunk)
 
-  def worker(n, chunk_size) when is_integer(n) do
-    Enum.to_list(1..n) |> FactorialPlus.worker(chunk_size)
+  def stream(n, chunk_size) when is_integer(n) do
+    Enum.to_list(1..n) |> FactorialPlus.stream(chunk_size)
   end
 
   # recursion stop
-  def worker(l, _chunk_size) when is_list(l) and length(l) == 1, do: List.first(l)
+  def stream(l, _chunk_size) when is_list(l) and length(l) == 1, do: List.first(l)
 
   # list version
-  def worker(list, chunk_size) when is_list(list) do
+  def stream(list, chunk_size) when is_list(list) do
     list
-    |> Enum.chunk_every(chunk_size)
-    |> Task.async_stream(&FactorialPlus.calc_product/1)
-    |> Enum.map(fn {:ok, p} -> p end)
+    |> Stream.chunk_every(10)
+    |> Stream.map(&calc_product/1)
+    |> Enum.to_list()
     # <---- recursion call
-    |> FactorialPlus.worker(chunk_size)
+    |> FactorialPlus.stream(chunk_size)
   end
 
   @doc """
@@ -2183,7 +2185,7 @@ form =
   )
 ```
 
-<!-- livebook:{"attrs":{"source":"frame = Kino.Frame.new() |> Kino.render()\n\nKino.Control.stream(form)\n|> Kino.listen(nil, fn %{data: %{n: n, chunk: chunk}}, _res ->\n  n = Integer.parse(n) |> elem(0)\n  fps = FactorialPlus.run(:spawn, [n]) / 1_000\n  fs = Factorial.run(:spawn, [n]) / 1_000\n\n  Kino.Frame.append(frame, number: n, chunk: chunk, spawn_recursive: fps)\n  Kino.Frame.append(frame, number: n, chunk: chunk, spawn: fs)\n\n  {:cont, nil}\nend)","title":"Click to evaluate / reset the Hidden Cell (double click to see the form"},"chunks":null,"kind":"Elixir.HiddenCell","livebook_object":"smart_cell"} -->
+<!-- livebook:{"attrs":{"source":"frame = Kino.Frame.new() |> Kino.render()\n\nKino.Control.stream(form)\n|> Kino.listen(nil, fn %{data: %{n: n, chunk: chunk}}, _res ->\n  n = Integer.parse(n) |> elem(0)\n  fpspw = FactorialPlus.run(:spawn, [n]) / 1_000\n  fspw = Factorial.run(:spawn, [n]) / 1_000\n  fstr = Factorial.run(:stream, [n]) / 1_000\n  fpstr  = FactorialPlus.run(:stream, [n]) / 1_000\n\n  Kino.Frame.append(frame, number: n, chunk: chunk, spawn_recursive: fpspw)\n  Kino.Frame.append(frame, number: n, chunk: chunk, spawn: fspw)\n  Kino.Frame.append(frame, number: n, chunk: chunk, stream: fstr)\n  Kino.Frame.append(frame, number: n, chunk: chunk, stream_recursive: fpstr)\n  {:cont, nil}\nend)","title":"Click to evaluate / reset the Hidden Cell (double click to see the form"},"chunks":null,"kind":"Elixir.HiddenCell","livebook_object":"smart_cell"} -->
 
 ```elixir
 frame = Kino.Frame.new() |> Kino.render()
@@ -2191,12 +2193,15 @@ frame = Kino.Frame.new() |> Kino.render()
 Kino.Control.stream(form)
 |> Kino.listen(nil, fn %{data: %{n: n, chunk: chunk}}, _res ->
   n = Integer.parse(n) |> elem(0)
-  fps = FactorialPlus.run(:spawn, [n]) / 1_000
-  fs = Factorial.run(:spawn, [n]) / 1_000
+  fpspw = FactorialPlus.run(:spawn, [n]) / 1_000
+  fspw = Factorial.run(:spawn, [n]) / 1_000
+  fstr = Factorial.run(:stream, [n]) / 1_000
+  fpstr = FactorialPlus.run(:stream, [n]) / 1_000
 
-  Kino.Frame.append(frame, number: n, chunk: chunk, spawn_recursive: fps)
-  Kino.Frame.append(frame, number: n, chunk: chunk, spawn: fs)
-
+  Kino.Frame.append(frame, number: n, chunk: chunk, spawn_recursive: fpspw)
+  Kino.Frame.append(frame, number: n, chunk: chunk, spawn: fspw)
+  Kino.Frame.append(frame, number: n, chunk: chunk, stream: fstr)
+  Kino.Frame.append(frame, number: n, chunk: chunk, stream_recursive: fpstr)
   {:cont, nil}
 end)
 ```
@@ -2215,18 +2220,17 @@ We pass the functions to test as maps `%{ "name" => function to evaluate, ...}` 
 
 ```elixir
 test? = true
-max = 10_000
+max = 20_000
 
 if test?,
   do:
     Benchee.run(
       %{
         "concurrent_spawn" => &Factorial.spawn/1,
-        "concurrent_task" => &Factorial.worker/1,
-        "single_process" => &Factorial.facto/1,
+        "concurrent_stream" => &Factorial.stream/1,
+        # "single_process" => &Factorial.facto/1,
         "concurrent_spawn_recursive" => &FactorialPlus.spawn/1,
-        "concurrent_task_recursive" => &FactorialPlus.worker/1,
-        "concurrent_non_recursive" => &Factorial.spawn/1
+        "concurrent_stream_recursive" => &FactorialPlus.stream/1
       },
       memory_time: 2,
       inputs: [small: 1_000, larger: max]
@@ -2285,7 +2289,7 @@ defmodule Plot do
       :calc_product ->
         0..max//@j
 
-      :spawn ->
+      :stream ->
         0..max//@i
     end
   end
@@ -2298,8 +2302,8 @@ defmodule Plot do
   end
 end
 
-n = 12_000
-data_conc_rec = Plot.plot(FactorialPlus, :spawn, n)
+n = 16_000
+data_conc_rec = Plot.plot(Factorial, :stream, n)
 data_single = Plot.plot(Factorial, :calc_product, n)
 ```
 
@@ -2307,7 +2311,7 @@ data_single = Plot.plot(Factorial, :calc_product, n)
 VegaLite.new(
   width: 400,
   height: 400,
-  title: "Computation time, concurrent(spawn) vs single process (calc_product)"
+  title: "Computation time, recursive_stream vs single process (reduction)"
 )
 |> VegaLite.layers([
   VegaLite.new()
