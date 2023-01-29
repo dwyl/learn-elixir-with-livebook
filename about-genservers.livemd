@@ -6,13 +6,20 @@ Mix.install([
   {:httpoison, "~> 2.0"},
   {:jason, "~> 1.4"}
 ])
+
+defmodule Log do
+  require Logger
+
+  def p(text, label, pid),
+    do: Logger.info("[#{Time.utc_now()}]--[#{inspect(pid)}] --:#{label}, #{inspect(text)}")
+end
 ```
 
 ## Introduction
 
 Data is immutable in Erlang/Elixir: you only work on copies and transform them with functions. Elixir/Erlang has a mechanism called [Genservers](https://hexdocs.pm/elixir/1.14.3/GenServer.html) to maintain and modify a state upon action or events and that can communicate with other processes. A `Genserver` is a _(spawned)_ single threaded process. It works with client-side functions and server-side callbacks and message passing. Messages are processed _sequentially_, "one at a time".
 
-The client functions are accessible from everywhere. The callbacks are functions that you can't call; they exist only in the module that implements the genserver behaviour; you have to implement them within the genserver module.
+Only the client functions are exposed, accessible from everywhere. The callbacks are functions that you can't call; they exist only in the module that implements the genserver behaviour; you have to implement them within the genserver module.
 
 Reading about using genservers: [spawn or not](https://www.theerlangelist.com/article/spawn_or_not)
 
@@ -114,7 +121,12 @@ end
 
 ##### A quick note about the callbacks `init` and `handle_continue`
 
-Long running code is discouraged in the `init` callback. You may want use the `:continue` instruction and implements the synchronous `handle_continue` callback to guaranty that this operation is finished before the Genserver handles another message/task. This is a blocking operation and avoids potential race conditions.
+Long running code is discouraged in the `init` callback. The main point is that the genserver is up quickly, which can be very important in a distributed or containerized environment.
+Look at the timestamps in the simulation below
+
+You use the `:continue` instruction and implements the synchronous `handle_continue` callback to guaranty that this operation is finished before the Genserver handles another message/task.
+
+This also avoids potential race conditions as the genserver is blocked for receiving requests until the completion of the operations.
 
 * Further reading : [ElixirSchool blog post](https://elixirschool.com/blog/til-genserver-handle-continue/)
 
@@ -136,7 +148,7 @@ defmodule LongInitGs do
 
   def handle_continue(:lengthy_task, s) do
     Process.sleep(1_000)
-    IO.puts("#{inspect(time())}ms: Continue")
+    IO.puts("#{inspect(time())}ms: Database loaded! Continue")
     {:noreply, s + 1}
   end
 
@@ -160,9 +172,9 @@ LongInitGs.state(pid)
 
 ## How to stop a genserver
 
-This can be done from a client function by invoking a `GenServer.stop(pid, :code)` order or equivalently letting a callback return `{:stop, reason, state}` from a callback. The optional callback `terminate` is triggered and can be used to handle cleanups before termination.
+This can be done from a client function by invoking a `GenServer.stop(pid, :code)` order or from inside a genserver by letting a callback return `{:stop, reason, state}`. The optional callback `terminate` is triggered and can be used to handle cleanups or database savings before termination.
 
-Other reason than `:normal` or `:shutdown` is considered as a crash by OTP. You may set `Process.flag(:trap_exit, true)` in the `init` callback to capture the `:EXIT` and let `terminate` run (eg save state into a database before exiting).
+Other reason than `:normal` or `:shutdown` is considered as a crash by OTP. You may set `Process.flag(:trap_exit, true)` in the `init` callback to capture the `:EXIT` and let `terminate` run.
 
 You can also `raise "message"`
 
