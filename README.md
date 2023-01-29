@@ -1,5 +1,11 @@
 # Learn some Elixir with Livebook
 
+## First steps with Genservers and supervisors
+
+[![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fdwyl%2Flearn-elixir-with-livebook%2Fblob%2Fmain%2Fabout-genservers.livemd)
+
+## Elixr initiation
+
 > this is still WIP!
 
 You have 3 ways to enjoy this Livebook
