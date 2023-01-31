@@ -141,6 +141,42 @@ Usefull parameters are:
 * `on_timeout: :kill_task`
 * `ordered: false`
 
+<!-- livebook:{"break_markdown":true} -->
+
+### Example of task: cron job
+
+We want to mimic a cron job with a Task. The task is turned into a long-running process by calling itself.
+
+```elixir
+defmodule Period do
+  use Task
+
+  def start(args) do
+    Task.start_link(__MODULE__, :run, [args])
+  end
+
+  def run([every: time, run: f] = args) do
+    apply(f, [])
+    IO.inspect(self())
+    Process.sleep(time)
+    run(args)
+  end
+end
+
+defmodule Clean do
+  def up, do: IO.puts(:cleaned!)
+end
+
+{:ok, pid} =
+  Period.start(
+    every: 5000,
+    run: fn -> Clean.up() end
+  )
+
+Process.sleep(15000)
+Process.exit(pid, :brutal_kill)
+```
+
 ## GenServer
 
 A `Genserver` is a _(spawned)_ single threaded process. It is a mechanism to run a long-lived _stateful_ process that can communicate with other processes. It works with client-side functions and server-side callbacks and message passing. Messages are processed _sequentially_, "one at a time".
@@ -245,51 +281,6 @@ for i <- 1..3 do
 end
 ```
 
-#### Example of `handle_continue` usage
-
-Long running code is discouraged in the `init` callback. You may want use the `:continue` instruction and implement the `handle_continue` callback to guaranty that this operation is finished before the Genserver handles another message/task. This is a blocking operation and avoids potential race conditions.
-
-We want a long-running process to "clean" things, and be able to use the "cleaning" function we want. Below is an example of an implementation with a genserver that uses `handle_continue`.
-
-```elixir
-defmodule Periodic do
-  use GenServer
-  @start Time.utc_now()
-
-  defp time, do: Time.diff(Time.utc_now(), @start, :millisecond)
-
-  def start_link(opts), do: GenServer.start(__MODULE__, opts)
-
-  def init(args) do
-    IO.puts("#{inspect(time())}ms: First Init")
-    {:ok, args, {:continue, :run}}
-  end
-
-  def handle_continue(:run, [every: time, run: _f] = state) do
-    IO.puts("#{inspect(time())}ms: Continue")
-    Process.send_after(self(), :repeat, time)
-    {:noreply, state}
-  end
-
-  def handle_info(:repeat, [every: time, run: myfun] = state) do
-    IO.puts("#{inspect(time())}ms: repeat")
-    apply(myfun, [])
-    Process.send_after(self(), :repeat, time)
-    {:noreply, state}
-  end
-end
-
-defmodule Clean do
-  def up, do: IO.puts(:cleaned!)
-end
-
-Periodic.start_link(
-  # will execute the function every 5s
-  every: 5000,
-  run: fn -> Clean.up() end
-)
-```
-
 ## How to stop a genserver
 
 This can be done from a client function by invoking a `GenServer.stop(pid, :code)` order or equivalently letting a callback return `{:stop, reason, state}` from a callback. The optional callback `terminate` is triggered and can be used to handle cleanups before termination.
@@ -325,6 +316,56 @@ if Process.alive?(pid) do
   GenServer.stop(pid)
   Process.alive?(pid)
 end
+```
+
+##### Example of genserver usage
+
+Long running code is discouraged in the `init` callback. You may want use the `:continue` instruction and implement the `handle_continue` callback to guaranty that this operation is finished before the Genserver handles another message/task. This is a blocking operation and avoids potential race conditions.
+
+<!-- livebook:{"break_markdown":true} -->
+
+The following usage of a genserver is an illustration; it is not appropriate as the simple Task used above is enough as you don't need to interact with this task. We implement again a genserver to run a cron job. It uses `handle_continue`. Once launched, it will run a reccurent job forever. We then kill the process shortly after.
+
+```elixir
+defmodule Periodic do
+  use GenServer
+  @start Time.utc_now()
+
+  defp time, do: Time.diff(Time.utc_now(), @start, :millisecond)
+
+  def start_link(opts), do: GenServer.start(__MODULE__, opts)
+
+  def init(args) do
+    IO.puts("#{inspect(time())}ms: First Init")
+    {:ok, args, {:continue, :run}}
+  end
+
+  def handle_continue(:run, [every: time, run: _f] = state) do
+    IO.puts("#{inspect(time())}ms: Continue")
+    Process.send_after(self(), :repeat, time)
+    {:noreply, state}
+  end
+
+  def handle_info(:repeat, [every: time, run: myfun] = state) do
+    IO.puts("#{inspect(time())}ms: repeat")
+    apply(myfun, [])
+    Process.send_after(self(), :repeat, time)
+    {:noreply, state}
+  end
+end
+
+defmodule Send do
+  def cleaner, do: :cleaned!
+end
+
+{:ok, pid} =
+  Periodic.start_link(
+    every: 5000,
+    run: fn -> Send.cleaner() end
+  )
+
+Process.sleep(11000)
+GenServer.stop(pid, :shutdown)
 ```
 
 ## Linking Genservers
