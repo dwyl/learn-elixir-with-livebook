@@ -151,30 +151,33 @@ We want to mimic a cron job with a Task. The task is turned into a long-running 
 defmodule Period do
   use Task
 
-  def start(args) do
+  def start_link(args) do
     Task.start_link(__MODULE__, :run, [args])
   end
 
   def run([every: time, run: f] = args) do
-    apply(f, [])
-    IO.inspect(self())
+    Task.Supervisor.async_nolink(MyTaskSupervisor, fn -> apply(f, []) end)
     Process.sleep(time)
     run(args)
   end
 end
 
 defmodule Clean do
-  def up, do: IO.puts(:cleaned!)
+  def up do
+    Process.sleep(500)
+    IO.puts(:cleaned!)
+  end
 end
 
 {:ok, pid} =
-  Period.start(
-    every: 5000,
+  Period.start_link(
+    every: 3_000,
     run: fn -> Clean.up() end
   )
 
-Process.sleep(15000)
-Process.exit(pid, :brutal_kill)
+Process.flag(:trap_exit, true)
+Process.sleep(15_000)
+Process.exit(pid, :shutdown)
 ```
 
 ## GenServer
@@ -348,23 +351,36 @@ defmodule Periodic do
 
   def handle_info(:repeat, [every: time, run: myfun] = state) do
     IO.puts("#{inspect(time())}ms: repeat")
-    apply(myfun, [])
+    Task.Supervisor.async_nolink(MyTaskSupervisor, fn -> apply(myfun, []) end)
     Process.send_after(self(), :repeat, time)
+    {:noreply, state}
+  end
+
+  def handle_info({_, msg}, state) do
+    IO.puts("message from task: #{msg}")
+    {:noreply, state}
+  end
+
+  def handle_info(_msg, state) do
+    # IO.inspect(msg)
     {:noreply, state}
   end
 end
 
 defmodule Send do
-  def cleaner, do: :cleaned!
+  def cleaner do
+    Process.sleep(500)
+    :cleaned!
+  end
 end
 
 {:ok, pid} =
   Periodic.start_link(
-    every: 5000,
+    every: 3_000,
     run: fn -> Send.cleaner() end
   )
 
-Process.sleep(11000)
+Process.sleep(11_000)
 GenServer.stop(pid, :shutdown)
 ```
 
