@@ -1,4 +1,4 @@
-# Elixir notes on processes: Genservers, supervisors
+# Elixir notes on processes: Tasks, Genservers, Supervisors
 
 ```elixir
 Mix.install([
@@ -17,7 +17,10 @@ end
 
 ## Introduction
 
-Data is immutable in Erlang/Elixir: you only work on copies and transform them with functions. Elixir/Erlang has a mechanism called [Genservers](https://hexdocs.pm/elixir/1.14.3/GenServer.html) to maintain and modify a state upon action or events and that can communicate with other processes. A `Genserver` is a _(spawned)_ single threaded process. It works with client-side functions and server-side callbacks and message passing. Messages are processed _sequentially_, "one at a time".
+Data is immutable in Erlang/Elixir: you only work on copies and transform them with functions.
+
+Elixir provides low level primitives `spawn` and `receive` to run code concurrently. Elixir provides more elaborated mechanism to leverage concurrency: short-lived process with `Task` and long-lived processes with `GenServer`. 
+Elixir/Erlang has a mechanism called [Genservers](https://hexdocs.pm/elixir/1.14.3/GenServer.html) to maintain and modify a state upon action or events and that can communicate with other processes. A `Genserver` is a _(spawned)_ single threaded process. It works with client-side functions and server-side callbacks and message passing. Messages are processed _sequentially_, "one at a time".
 
 Only the client functions are exposed, accessible from everywhere. The callbacks are functions that you can't call; they exist only in the module that implements the genserver behaviour; you have to implement them within the genserver module.
 
