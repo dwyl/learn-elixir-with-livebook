@@ -11,10 +11,11 @@ You have 3 ways to enjoy this Livebook
 
 [![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fdwyl%2Flearn-elixir-with-livebook%2Fblob%2Fmain%2Flearn-elixir-on-livebook.livemd)
 
-- with Docker <img src="https://user-images.githubusercontent.com/6793008/216023769-d2693462-1864-4204-b7cf-67378fce6d49.png" with="30" height="40" alt="docker"/>
+- with Docker
+ <img src="https://user-images.githubusercontent.com/6793008/216023769-d2693462-1864-4204-b7cf-67378fce6d49.png" with="30" height="40" alt="docker"/>
 
 
-If you have `Docker` installed, no need to install `Elixir` or `Livebook`. Launch `Docker` and run the `Livebook` image:
+If you have `Docker` installed,  launch `Docker` and run the commands below:
 
 ```
 docker run -p 8080:8080 -p 8081:8081 --pull always -e LIVEBOOK_PASSWORD="securesecret" livebook/livebook
