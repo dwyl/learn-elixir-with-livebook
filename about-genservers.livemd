@@ -20,37 +20,42 @@ Supervisor.start_link(
 
 ## Introduction
 
-Data is immutable in Erlang/Elixir: you only work on copies and transform them with functions.
-
-Elixir/Erlang has two modules, [Task](https://hexdocs.pm/elixir/1.14.3/Task.html) and [Genservers](https://hexdocs.pm/elixir/1.14.3/GenServer.html), to run code concurrently. When you need to leverage concurency and run code in a short-lived single function, you use the `Task` module. When you need a low-running _stateful_ process where you need control and interactivity, you run the code with a `GenServer`.
+Elixir/Erlang has two main modules, [Task](https://hexdocs.pm/elixir/1.14.3/Task.html) and [Genservers](https://hexdocs.pm/elixir/1.14.3/GenServer.html), to run code concurrently. When you need to leverage concurency and run code in a short-lived _stateless_ single function without interaction, you use the `Task` module. When you need a long-running _stateful_ process where you need control and interactivity, you run the code with a `GenServer`.
 
 ## Task
 
-Suppose you have to send millions of emails. It is a short-lived process which exits as soon as completed. You can run this code with a `Task` to leverage concurrency.
-
-We can run conccurent,code with the `Task.asnyc`.
+Suppose you have to send millions of emails. It is a short-lived process which exits as soon as completed. You can run this code with a `Task` to leverage concurrency and use [Task.async](https://hexdocs.pm/elixir/1.14.3/Task.html#async/1).
 
 > Note that in case of failure, the error will bubble up (see "Supervisor" further down).
+
+<!-- livebook:{"break_markdown":true} -->
+
+We spawn 2 processes:
 
 ```elixir
 defmodule Email1 do
   @emails ["a@com", "b@com"]
 
-  def send_email(email), do: IO.puts("#{email}")
+  def send_email(email) do
+    Process.sleep(1_000)
+    IO.puts("#{email} received at: #{inspect(Time.utc_now())}")
+  end
 
   def run do
     Enum.each(@emails, fn email -> Task.async(fn -> send_email(email) end) end)
   end
 end
 
+Time.utc_now() |> IO.inspect(label: :before)
 Email1.run()
+Time.utc_now() |> IO.inspect(label: :after)
 ```
 
 ##### Get the response
 
-We can use `Enum.each` if we just want to run the tasks. It returns `:ok`. If we want to the response of the task, we use `Enum.map` instead because this returns a list of corresponding Task structs. This struct is used by the  `Task.await/1` or `Task.yield/1` functions to get the result.
+We can use `Enum.each` if we just want to run the tasks. It returns `:ok`. If we want to the response of the task, we use `Enum.map` instead because this returns a list of corresponding Task structs. This struct is used by the  [Task.await](https://hexdocs.pm/elixir/1.14.3/Task.html#await/2) or [Task.yield](https://hexdocs.pm/elixir/1.14.3/Task.html#yield/2) functions to get the result.
 
-An await task returns the result or error whilst a "yielded" task returns `{:ok, result}` or `{:error, reason}`. Tasks are supposed to run within a certain amount of time. The parameter key is `:timeout`, defaults to 5000. The `yield` function returns `nil` if the task is not completed and can be used repeatedly whilst not `await`.
+An "awaited" task returns the result or error whilst a "yielded" task returns `{:ok, result}` or `{:error, reason}`. Tasks are supposed to run within a certain amount of time. The parameter key is `:timeout`, defaults to 5000.
 
 ```elixir
 t_await = Task.async(fn -> 1 end)
@@ -58,25 +63,22 @@ t_yield = Task.async(fn -> 2 end)
 %{task: t_await, _await: Task.await(t_await), _yield: Task.yield(t_yield)}
 ```
 
-We set a "timeout" value in ms in the `Task.yield` function. When the task isn't completed within this period, it return `nil`.
+We set the optional "timeout" value in ms in the [Task.yield](https://hexdocs.pm/elixir/1.14.3/Task.html#yield/2) function. When the task isn't completed within this period, it returns `nil`.
 
 ```elixir
-Task.async(fn ->
-  Process.sleep(1000)
-  1
-end)
+Task.async(fn -> Process.sleep(1000) end)
 |> Task.yield(500)
 ```
 
-We can run repeatedly `yield`:
+We can run repeatedly `yield` whilst not `await`.
 
 ```elixir
 defmodule Continue do
-  def _yield(task, time) do
+  def _yield(task, timeout: time) do
     case Task.yield(task, time) do
       nil ->
         IO.puts("called again")
-        _yield(task, time)
+        _yield(task, timeout: time)
 
       result ->
         result
@@ -84,13 +86,8 @@ defmodule Continue do
   end
 end
 
-t =
-  Task.async(fn ->
-    Process.sleep(2000)
-    1
-  end)
-
-Continue._yield(t, 500)
+Task.async(fn -> Process.sleep(3000) end)
+|> Continue._yield(timeout: 500)
 ```
 
 #### `Async_stream`
@@ -100,18 +97,18 @@ Instead of doing `Enum.map |> Task.async`, we can do in one go with `Task.async_
 The function `Task.async_stream` returns a stream, a list of functions ready to be called. We use `Stream.run/1` to run it when you don't care about the result. It returns `:ok`. If we want a result, we use `Enum.to_list/1`.
 
 ```elixir
-chars = Enum.map(?a..?h, fn x -> <<x::utf8>> <> "@com" end)
+chars = Enum.map(?a..?l, fn x -> <<x::utf8>> <> "@com" end)
 ```
 
-The function will run 4 concurrent stream so the 8 emails will be processed in 2 goes.
+The function will run 4 concurrent stream so the 12 emails will be processed in 3 runs.
 
 ```elixir
 defmodule MyTasks do
   @emails chars
 
   def send_email(email) do
-    IO.inspect(self())
-    IO.puts("#{email}")
+    Process.sleep(500)
+    IO.puts("#{inspect(self())} processed #{email} at: #{inspect(Time.utc_now())}")
   end
 
   def back_pressured do
@@ -122,10 +119,13 @@ defmodule MyTasks do
       max_concurrency: 4,
       ordered: false
     )
-  en
+  end
 end
 
+Time.utc_now() |> IO.inspect(label: :before)
 MyTasks.back_pressured() |> Stream.run()
+Time.utc_now() |> IO.inspect(label: :after)
+
 # |> Enum.to_list()
 ```
 
@@ -142,7 +142,7 @@ The function `System.schedulers_online()` returns the number of available cores 
 
 We want to mimic a cron job with a Task. The task runs another task and is turned into a long-running process by calling itself.
 
-> Note that we _unlinked_ the main process from the async task, and _supervised_ function `Taks.Superivsor.async_nolink` since this would be the correct way to run an async job (see Supervisor) from this task.
+> Note that we _unlinked_ the main process from the async task, and _supervised_ function [Task.Superivsor.async_nolink](https://hexdocs.pm/elixir/1.14.3/Task.Supervisor.html#async_nolink/3) since this would be the correct way to run an async job (see Supervisor) from this task.
 
 ```elixir
 defmodule Period do
@@ -160,10 +160,7 @@ defmodule Period do
 end
 
 defmodule Clean do
-  def up do
-    Process.sleep(00)
-    IO.puts(:cleaned!)
-  end
+  def up, do: IO.puts(:cleaned!)
 end
 
 {:ok, pid} =
@@ -639,6 +636,33 @@ You can review the supervised processes with the supervision tree by running:
 Process.whereis(MySupervisor)
 ```
 
+## Task Supervisor
+
+Tasks can also be supervised. You declare a [Task.Supervisor](https://hexdocs.pm/elixir/1.14.3/Task.Supervisor.html) in your supervising tree with the child spec: `{Task.Supervisor, name: MyTaskSupervisor}`. You can use the unlinked with [async_nolkink](https://hexdocs.pm/elixir/1.14.3/Task.Supervisor.html#async_nolink/3) or linked with [async](https://hexdocs.pm/elixir/1.14.3/Task.Supervisor.html#async/3) version:
+
+```elixir
+defmodule Email2 do
+  @emails ["a@com", "b@com", "c@com"]
+
+  def send_email("b@com"), do: raise("oh no!")
+  def send_email(email), do: IO.puts("#{email}")
+
+  def run do
+    Enum.each(
+      @emails,
+      fn email ->
+        Task.Supervisor.async_nolink(
+          MyTaskSupervisor,
+          fn -> send_email(email) end
+        )
+      end
+    )
+  end
+end
+
+Email2.run()
+```
+
 ## Genserver Registration
 
 Every process can be given a name, aka as registration, with an **atom**: `Process.register(pid, :name)`. A Genserver can be referenced by its _PID_ or with the `:name` option (cf [name](https://hexdocs.pm/elixir/1.14.3/GenServer.html#module-name-registration)).
@@ -907,46 +931,19 @@ Besides the [doc](https://hexdocs.pm/elixir/1.14.3/Registry.html), you might fin
 * <https://dashbit.co/blog/homemade-analytics-with-ecto-and-elixir>
 * <https://github.com/amokan/registry_sample/blob/master/lib/registry_sample/account.ex>
 
-## Task Supervisor
-
-Tasks can also be supervised. You declare a `Task.Supervisor` in your supervising tree: `{Task.Supervisor, name: MyTaskSupervisor}`. You can use the unlinked with `async_nolkink` or linked with `async` version whether you want to stop the async task with the main process or not:
-
-```elixir
-defmodule Email2 do
-  @emails ["a@com", "b@com"]
-
-  def send_email("b@com"), do: raise("oh no!")
-  def send_email(email), do: IO.puts("#{email}")
-
-  def run do
-    Enum.each(
-      @emails,
-      fn email ->
-        Task.Supervisor.async_nolink(
-          MyTaskSupervisor,
-          fn -> send_email(email) end
-        )
-      end
-    )
-  end
-end
-
-Email2.run()
-```
-
 ## Running Async Tasks in a Genserver
 
 You could run a `Task.async |> Task.await` in a genserver process. However, it is [not recommended](https://hexdocs.pm/elixir/1.14.3/Task.html#await/2-compatibility-with-otp-behaviours) to await a long task in a genserver.
 
-If you just want to run the task but don't care of the result, then you can launch an `async` task from a callback. This task is monitored by the Genserver and once terminated, and [receives two messages](https://hexdocs.pm/elixir/1.14.3/Task.html#await/2-compatibility-with-otp-behaviours): a `:DOWN, :normal` message and a `{ref, result}`. You use a `GenServer.handle_info` to match on the response (see the example below).
+If you just want to run the task but don't care of the result, then you can launch an `async` task from a callback. This task is monitored by the Genserver. Once terminated,  [two messages](https://hexdocs.pm/elixir/1.14.3/Task.html#await/2-compatibility-with-otp-behaviours) are generated with the format `{:DOWN,...,:normal}` and `{ref, result}`. You use a `GenServer.handle_info` to match on the response (see the example below).
 
-Even if you don't want ot use `await`, you can still get a delayed response from a `Task.async` when you use `GenServer.reply` (see the "successful' example below).
+Even if you may not use `await`, you can still get a delayed response from a `Task.async` when you use `GenServer.reply` (see the "successful' example below).
 
-You may run a long task in a Liveview and don't want it to crash because of this process. You will use `Task.Supervisor` (see example below). To supervise tasks, you register a `Task.Supervisor`  in the supervision tree. The failure if any is collected in the `terminate` callback of the Genserver.
+The typical use cases can be:
 
-You may also want the process to stop running when you change Liveview. You will use `Task.Supervisor.asnyc` for this because the processes will be **linked**. This emphasize the importance of supervising a task.
-
-In the situation you just want to launch a task and don't care of receiving a response, then you may use `Task.Supervisor.async_nolink` so the processes are not linked.
+* you may run a long task in a Liveview and don't want it to crash because of this process. You will use `Task.Supervisor` (see example below). To supervise tasks, you register a `Task.Supervisor`  in the supervision tree. The failure if any is collected in the `terminate` callback of the Genserver.
+* you may also want the process to stop running when you change Liveview. You will use `Task.Supervisor.async` for this because the processes will be **linked**.
+* in the situation you just want to launch a task and don't care of receiving a response, then you may use `Task.Supervisor.async_nolink` so the processes are not linked.
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -969,7 +966,7 @@ end
 AsyncTask.run()
 ```
 
-When a genserver calls an async task, it will receive 2 messages: the result `{ref, return from async task}` and a completion message of the finished task: `{:DOWN, ref, :process, pid}`. You have to handle them. The "catch all" `handle_info` below receives the two messages.
+The genserver below calls the `AsyncTask` module. It will receive 2 messages: the result `{ref, return from async task}` and a completion message of the finished task: `{:DOWN, ref, :process, pid}`. The "catch all" `handle_info` below receives these two messages.
 
 ```elixir
 defmodule FirstAsyncTaskGsRunner do
@@ -999,7 +996,7 @@ GenServer.start(FirstAsyncTaskGsRunner, {})
 |> FirstAsyncTaskGsRunner.run()
 ```
 
-We can use `Process.demonitor(ref, [:flush])` inside the `handle_info` callback once you received the first message `{ref, message}`. In case the task is successful, you will not receive the `{:DOWN, ref, :process, pid, :normal}` status message. If the task fails, you will receive a message however in the `:DOWN` handler.
+We can use `Process.demonitor(ref, [:flush])` inside the `handle_info` callback where you received the first message `{ref, message}`. In case the task is successful, you will not receive the `{:DOWN, ref, :process, pid, :normal}` status message. If the task fails, you will receive a message in the `:DOWN` handler.
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -1007,13 +1004,11 @@ We can use `Process.demonitor(ref, [:flush])` inside the `handle_info` callback 
 
 <!-- livebook:{"break_markdown":true} -->
 
-Set-up the genserver below to run the previous `AsyncTask` and handle the messages. It is recommended to run this `AsyncTask` as a supervised task (see the next example).
-
-Recall that you can link the task to the main process or not. If you want to stop the task when the main process stops (eg you leave a page), use `Task.Supervisor.async`, and `Task.Supervisor.async_nolink` otherwise.
+It is recommended to run this `AsyncTask` as a supervised task (see the next example). Recall that you can link the task to the main process or not. If you want to stop the task when the main process stops (eg you leave a page), use `Task.Supervisor.async`, and `Task.Supervisor.async_nolink` otherwise.
 
 ##### Example with `GenServer.reply`
 
-You can get a response back with [GenServer.reply/2](https://hexdocs.pm/elixir/1.14.3/GenServer.html#reply/2). In the callback `handle_call(:key, from, state)`, you don't reply normally but with `{:noreply, state}`. You save  the `from = {pid, [alias: ref]}` in the state so you can use it later. When the (monitored) async task is finished, there is message tuple sent with `{ref, result}`. Inside you can use the function `GenServer.reply(from, result)` to return a delayed message from the `.call`.
+You can get a response back with [GenServer.reply/2](https://hexdocs.pm/elixir/1.14.3/GenServer.html#reply/2). In the callback `handle_call(:key, from, state)`, you reply instead with `{:noreply, state}`. You save  the `from = {pid, [alias: ref]}` in the state so you can use it later. When the (monitored) async task is finished, there is message tuple sent with `{ref, result}`. Inside the callback you can use the function `GenServer.reply(from, result)` to return a delayed message from the `.call`.
 
 ```elixir
 defmodule AsyncTaskReplier do
@@ -1055,7 +1050,7 @@ Process.alive?(pid) |> IO.inspect()
 response
 ```
 
-We use the "normal" monitoring mechanism of async tasks (when we don't care of the response): we listen to the 2 messages sent. Both forms, linked and unlined, are coded.
+We use this time the "normal" monitoring mechanism of async tasks (when we don't care of the response): we listen to the 2 messages sent. Both forms, linked and unlined, are coded.
 
 ```elixir
 defmodule NoFailAsyncTaskRunner do
