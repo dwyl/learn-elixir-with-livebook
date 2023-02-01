@@ -1,7 +1,7 @@
 # Some Livebooks to learn some Elixir
 
 
-## 1. Elixr initiation Livebook
+## 1. Elixir initiation Livebook
 
 You have 3 ways to enjoy this Livebook
 
