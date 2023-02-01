@@ -3,8 +3,6 @@
 
 ## 1. Elixr initiation Livebook
 
-> this is still WIP!
-
 You have 3 ways to enjoy this Livebook
 
 #### Run it locally
@@ -51,5 +49,7 @@ Easy peasy. Just click below:
 
 
 ## 2. First steps with Tasks, Genservers and Supervisors
+
+Run this Livebook:
 
 [![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fdwyl%2Flearn-elixir-with-livebook%2Fblob%2Fmain%2Fabout-genservers.livemd)
