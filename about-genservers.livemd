@@ -907,6 +907,33 @@ Besides the [doc](https://hexdocs.pm/elixir/1.14.3/Registry.html), you might fin
 * <https://dashbit.co/blog/homemade-analytics-with-ecto-and-elixir>
 * <https://github.com/amokan/registry_sample/blob/master/lib/registry_sample/account.ex>
 
+## Task Supervisor
+
+Tasks can also be supervised. You declare a `Task.Supervisor` in your supervising tree: `{Task.Supervisor, name: MyTaskSupervisor}`. You can use the unlinked with `async_nolkink` or linked with `async` version whether you want to stop the async task with the main process or not:
+
+```elixir
+defmodule Email2 do
+  @emails ["a@com", "b@com"]
+
+  def send_email("b@com"), do: raise("oh no!")
+  def send_email(email), do: IO.puts("#{email}")
+
+  def run do
+    Enum.each(
+      @emails,
+      fn email ->
+        Task.Supervisor.async_nolink(
+          MyTaskSupervisor,
+          fn -> send_email(email) end
+        )
+      end
+    )
+  end
+end
+
+Email2.run()
+```
+
 ## Running Async Tasks in a Genserver
 
 You could run a `Task.async |> Task.await` in a genserver process. However, it is [not recommended](https://hexdocs.pm/elixir/1.14.3/Task.html#await/2-compatibility-with-otp-behaviours) to await a long task in a genserver.
