@@ -1,13 +1,13 @@
 # Some Livebooks to learn some Elixir
 
-## [Elixir initiation Livebook](#elixir-initiation-livebook)
-  ### [ Run it locally](#run-it-locally)
-  ### [Run it the cloud](#run-it-in-the-cloud)
-  ### [Install Livebook webbapp](#install-livebook-webbapp)
+1. [Elixir initiation Livebook](#elixir-initiation-livebook)
+- [Run it locally](#run-it-locally)
+-  [Run it the cloud](#run-it-in-the-cloud)
+-  [Install Livebook webbapp](#install-livebook-webbapp)
    
-## [First steps with Tasks Genservers and Supervisors](#first-steps-with-tasks-genservers-and-supervisors)
+2. [First steps with Tasks Genservers and Supervisors](#first-steps-with-tasks-genservers-and-supervisors)
 
-## [Finite State machines with Elixir Erlang](#finite-state-machines-with-elixir-erlang)
+3. [Finite State machines with Elixir Erlang](#finite-state-machines-with-elixir-erlang)
 
 
 ## Elixir initiation Livebook
