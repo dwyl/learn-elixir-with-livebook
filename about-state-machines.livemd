@@ -1,4 +1,4 @@
-# A few things on Finite Automatas with Elixir/Erlang
+# A few things on Finite Automata with Elixir/Erlang
 
 ```elixir
 Mix.install([
