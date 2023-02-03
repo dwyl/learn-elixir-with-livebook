@@ -741,7 +741,7 @@ Test.run(s1)
 
 ## Testing
 
-To validdate...
+To be continued...
 
 ```elixir
 ExUnit.start(auto_run: false)
