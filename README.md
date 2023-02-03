@@ -1,7 +1,13 @@
 # Some Livebooks to learn some Elixir
 
+## [Elixir initiation Livebook](#elixir-initiation-livebook)
+  - [ Run it locally](#run-it-locally)
+  -  [Run it the cloud](#run-it-in-the-cloud)
+  -  [Install Livebook webbapp]()#install-livebook-webbapp)
+## [First steps with Tasks Genservers and Supervisors](#first-steps-with-tasks-genservers-and-supervisors)
+## [A few things on Finite State machines with Elixir-Erlang](#a-few-things-on-finite-state-machines-with-elixir-erlang)
 
-## 1. Elixir initiation Livebook
+## Elixir initiation Livebook
 
 You have 3 ways to enjoy this Livebook
 
@@ -28,7 +34,7 @@ open http://localhost:8080/import?url=https://github.com/dwyl/learn-elixir-with-
 ```
 
 
-#### Run it the cloud
+#### Run it in the cloud
 
 If you don't have `Elixir` nor `Livebook` installed, you can still run the Elixir initiation `Livebook`. You (**right**-)click on the grey button **"Run in Livebook"** below. 
 
@@ -42,15 +48,21 @@ If you don't have `Elixir` nor `Livebook` installed, you can still run the Elixi
   -  and finally, select the file [dwyl-learn-elixir.livemd]. It should be printed in green, and "join session". 🤗
    
 
-#### Lastly, install `Livebook` webbapp.
+#### Install Livebook webbapp
 
 Easy peasy. Just click below:
 
 👉  [<img width="326" alt="Screenshot 2023-01-13 at 10 15 23" src="https://user-images.githubusercontent.com/6793008/212283403-116dbf5c-eea4-4c16-88df-b9aba86e209a.png">](https://livebook.dev/)
 
 
-## 2. First steps with Tasks, Genservers and Supervisors
+## First steps with Tasks Genservers and Supervisors
 
 Run this Livebook:
 
 [![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fdwyl%2Flearn-elixir-with-livebook%2Fblob%2Fmain%2Fabout-genservers.livemd)
+
+## A few things on Finite State machines with Elixir-Erlang
+
+Run this Livebok:
+
+[![Run in Livebook](https://livebook.dev/badge/v1/gray.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fdwyl%2Flearn-elixir-with-livebook%2Fblob%2Fmain%2Fabout-state-machines.livemd)
