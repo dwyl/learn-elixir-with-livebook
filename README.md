@@ -57,12 +57,15 @@ Easy peasy. Just click below:
 
 👉  [<img width="326" alt="Screenshot 2023-01-13 at 10 15 23" src="https://user-images.githubusercontent.com/6793008/212283403-116dbf5c-eea4-4c16-88df-b9aba86e209a.png">](https://livebook.dev/)
 
+<hr/>
 
 ## First steps with Tasks Genservers and Supervisors
 
 Run this Livebook:
 
 [![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fdwyl%2Flearn-elixir-with-livebook%2Fblob%2Fmain%2Fabout-genservers.livemd)
+
+<hr />
 
 ## Finite State machines with Elixir Erlang
 
