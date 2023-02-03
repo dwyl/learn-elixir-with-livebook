@@ -1,23 +1,26 @@
-# A few things on Finite State machine with Elixir/Erlang
+# A few things on Finite Automatas with Elixir/Erlang
 
 ```elixir
 Mix.install([
   {:machinery, "~> 1.0.0"},
-  {:gen_state_machine, "~> 3.0"}
+  {:gen_state_machine, "~> 3.0"},
+  {:states_language, "~> 0.2.3"},
+  {:xstate, "~> 0.1.0"}
 ])
 ```
 
 ## Introduction
 
-You might be interresed with process-driven state when your process graph is not only a sequential series of events, but has some cycles, or timeouts, or when you need to manage a state in your graph, In all other cases, a module based sequential solution with message passing might be a better solution.
+State machines or State Automata are designed to recognize patterns in general; they have a start and an end. and only a finite number of states at a given time (cf [Wikipedia](https://en.wikipedia.org/wiki/Finite-state_machine)). A transition is a change of state in response to some inputs. Automatas don't neccesarily You might be interresed with process-driven state when your process graph is not only a sequential series of events, but has some cycles, or timeouts, or when you need to manage a state in your graph, In all other cases, a module based sequential solution with message passing might be a better solution.
 
-Erlang has an in-build solution `:gen_statem`. This is an event-driven
-Sources:
+Erlang has an in-build solution `:gen_statem`. This is an event-driven solution.
+
+Documentation:
 
 * [GenStateMachine timeouts](https://dockyard.com/blog/2020/01/31/state-timeouts-with-gen_statem)
 * [Struct implementation](https://blog.appsignal.com/2020/07/14/building-state-machines-in-elixir-with-ecto.html)
-* [Ecto and the building stte machines](https://blog.appsignal.com/2020/07/14/building-state-machines-in-elixir-with-ecto.html)
-* the librabries: [Machinery](), [GenStateMachine](https://hexdocs.pm/gen_state_machine/GenStateMachine.html), [event-timeout and :gen_statem](https://www.erlang.org/doc/man/gen_statem.html)
+* [Ecto and the building state machines](https://blog.appsignal.com/2020/07/14/building-state-machines-in-elixir-with-ecto.html)
+* the libraries: [Machinery](), [GenStateMachine](https://hexdocs.pm/gen_state_machine/GenStateMachine.html), [event-timeout and :gen_statem](https://www.erlang.org/doc/man/gen_statem.html)
 
 ## DFA: the Door model
 
@@ -25,28 +28,25 @@ Sources:
 
 Note that this doesn't mean that a state has a unique "next state" but the combination `{state, input, next_state}` is unique.
 
-Also note that different inputs can return the same next state. For example, one can imagine that only one input can change a certain state, say `{state_0, input_0, state_1}` whilst the other inputs keep the state unchanged, in other words act as the "identity". The same state `state_0` can return itself with _different_ outputs: `{state_0, input1, state_0}` and `{state_0, input2, state_0}` etc...
+Also note that different inputs can return the same next state. For example, one can imagine that only one input can change a certain state, say: $\rm{state}_0 \xrightarrow{\text{input}_0}  \rm{state}_1$,  whilst the other inputs keep the state unchanged, in other words act as the "identity": $i\neq 0 \implies \rm{state}_0 \xrightarrow{\text{input}_i}  \rm{state}_0$, so different poutputs can return the same state.
 
 Let's take the door example. It is a simple **deterministic** finite one. A door can open or closed, locked or unlocked.
 
-Our machine is represented as: (states, inputs, transition_function, init_state, final_admissible_state):
-
-```
-M = [
-  {:opened, :unlocked, :locked, :trapped},
-  (:open, :close, lock, :unlock),
-  t,
-  :locked,
-  any
-]
-```
-
-where the transition function `f` is given by the map
+Our machine `M` is represented as: (states, inputs, transition_function, init_state, final_admissible_state):
 
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
-f:
+M = [Q:{:opened, :unlocked, :locked, :trapped}, S:(:open, :close, lock, :unlock),t,:locked,any]
+
+t: Q x S -> Q
+```
+
+where the transition function `t` is defined by the map
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
 %{
  "locked"     => "unlocked",    #<-- :unlock
   "unlocked"  => "locked",      #<-- :lock
@@ -97,7 +97,7 @@ We will hold the state of the process in a _struct_ and build a function that ta
  (%State{state: current}, event)  ->  %State{state: new_state}
 ```
 
-Thanks to pattern matching, it is easy with Elixir. It is sufficient to code all of the allowed transitions. For simplicity, all other cases are consdered as trapped here, responding with an error tuple. This simple implementation that can be useful
+Thanks to pattern matching, Elixir makes it easy to code all of the allowed transitions. For simplicity,_ all effects of inputs on the states that are not listed as admissible are consdered as trapped, responding with an error tuple_. Although simple, this pattern can be useful
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -167,6 +167,77 @@ We can test a sequence of events:
 end)
 ```
 
+## Xstate package
+
+The formalism of [Xstate](https://github.com/natserract/xstate) is purely functional and declarative.
+
+```elixir
+import Xstate
+alias Xstate.StateMachine
+
+func = fn msg, inside ->
+  IO.puts("#{msg} in #{inside}")
+  {:ok, msg}
+end
+
+machine = %StateMachine.Machine{
+  initial_state: "unlocked",
+  mapping: %{
+    :lock => %StateMachine.Transitions{
+      target: "locked",
+      before: fn _ ->
+        func.(:before_transition_, "unlocked")
+      end,
+      callback: fn _ ->
+        func.(:after_transition, "locked")
+      end
+    },
+    :unlock => %StateMachine.Transitions{
+      target: "unlocked",
+      before: fn _ ->
+        func.(:before_transition_, "locked")
+      end,
+      callback: fn _ ->
+        func.(:after_transition, "unlocked")
+      end
+    },
+    :open => %StateMachine.Transitions{
+      target: "open",
+      before: fn _ ->
+        func.(:before_transition_, "unlocked")
+      end,
+      callback: fn _ ->
+        func.(:after_transition, "opened")
+      end
+    },
+    :close => %StateMachine.Transitions{
+      target: "unlocked",
+      before: fn _ ->
+        func.(:before_transition_, "opened")
+      end,
+      callback: fn _ ->
+        func.(:after_transition, "unlocked")
+      end
+    }
+  },
+  modifiable_states: MapSet.new(["created"])
+}
+```
+
+```elixir
+spawn(fn ->
+  machine = StateMachine.new(machine)
+  # state before transition
+  # |> StateMachine.get_states() |> IO.inspect()
+
+  # Invoke transition
+  StateMachine.transition(machine, "open") |> IO.inspect()
+  StateMachine.transition(machine, "close") |> IO.inspect()
+  StateMachine.transition(machine, "lock") |> IO.inspect()
+  StateMachine.get_states(machine) |> IO.inspect()
+end)
+```
+
 ## Machinery package
 
 We can use the package [Machinery](https://github.com/joaomdmoura/machinery); it is based on a struct that holds the state, and on the declation of a `transitions` map. It exposes a function `Machinery.transition_to/3` that takes the state struct, its module name, and a possible state. It returns `{:ok, new_state_struct}` or `{:error, message}` when the transition is found in the transition map or not (our "trap" state).
@@ -214,10 +285,11 @@ end
 ```
 
 ```elixir
+require Logger
+
 [
   "unlocked",
-  "closed",
-  "opened",
+  "locked",
   "opened",
   "unlocked",
   "opened",
@@ -229,7 +301,7 @@ end
 |> Enum.reduce(%MachineryDoor{}, fn state, struct ->
   case Machinery.transition_to(struct, MachineryDoor, state) do
     {:ok, new_struct} ->
-      IO.inspect(new_struct.door)
+      Logger.debug(new_struct)
       new_struct
 
     {:error, msg} ->
@@ -237,13 +309,11 @@ end
       struct
   end
 end)
-
-Machinery.transition_to(%MachineryDoor{}, MachineryDoor, "unlocked")
 ```
 
 ## Erlang's gen_statem module
 
-We will use the [:gen_statem](https://www.erlang.org/doc/man/gen_statem.html) module (from `Erlang`). It is a `GenServer` like behaviour so is designed for event-driven state machines.
+We will use the [:gen_statem](https://www.erlang.org/doc/man/gen_statem.html) module (from `Erlang`). It is a `GenServer` like behaviour so is designed for event-driven automatas..
 
 Two callback modes are supported:
 
@@ -440,28 +510,68 @@ GS.call(pid, :login)
 ```
 
 ```elixir
-
-```
-
-```elixir
 {:ok, pid} = Inactive.start(name: "John")
 alias GenStateMachine, as: GSm
 GSm.call(pid, :login)
 
-for _ <- 1..5 do
-  (Enum.random(5..25) * 1000) |> Process.sleep()
-  GSm.call(pid, :activate)
-end
+spawn(fn ->
+  for _ <- 1..5 do
+    if Process.alive?(pid) do
+      GSm.call(pid, :activate)
+      (Enum.random(5..25) * 1000) |> Process.sleep()
+    end
+  end
+end)
 ```
 
-## Json format
+## FSM & JSON format
 
-You can use the package [states_language](https://github.com/entropealabs/states_language). You build a JSON representation and you get Elixir code!
+Finite State Machines, You can use the package [states_language](https://github.com/entropealabs/states_language) with its [Hex docs](https://hexdocs.pm/states_language/readme.html). You build a JSON representation and you get Elixir `genstatem` based processes!
 
 From their documentation: "this is based an the [Amazon State Languages](https://states-language.net/spec.html). It compiles to Elixir/gen_statem a JSON representation of your state machine. Such specifications are behind [AWS step functions](https://aws.amazon.com/step-functions/)".
 
-Let's demonstrate this with our door process.
-[TO BE DEMONSTRATED]
+The JSON representation of our door process is:
+
+```elixir
+{"Comment": "the door DFSM",
+  "StartAt": "locked",
+  "States": {
+    "unlocked": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Type": "Task",
+          "TransitionEvent": ":open",
+          "Next": "opened",
+          "End": true
+        },
+        {
+          "Type": "Task",
+          "TransitionEvent": ":lock",
+          "Next": "locked",
+          "End": true
+        },
+      ]
+    },
+    "locked": {
+      "Type": "Task",
+      "TransitionEvent": ":unlock",
+      "Next": "opened",
+      "End": true
+    },
+    "opened": {
+      "Type": "Task",
+      "TransitionEvent": ":close",
+      "Next": "unlocked",
+      "End": true
+    }
+  }
+}
+```
+
+```elixir
+
+```
 
 ## Non-deterministic Finite Automata: NFA
 
