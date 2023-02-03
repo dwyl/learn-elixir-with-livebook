@@ -532,7 +532,9 @@ From their documentation: "this is based an the [Amazon State Languages](https:/
 
 The JSON representation of our door process is:
 
-```elixir
+<!-- livebook:{"break_markdown":true} -->
+
+```js
 {"Comment": "the door DFSM",
   "StartAt": "locked",
   "States": {
@@ -567,10 +569,6 @@ The JSON representation of our door process is:
     }
   }
 }
-```
-
-```elixir
-
 ```
 
 ## Non-deterministic Finite Automata: NFA
