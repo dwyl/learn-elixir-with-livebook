@@ -5,7 +5,8 @@ Mix.install([
   {:machinery, "~> 1.0.0"},
   {:gen_state_machine, "~> 3.0"},
   {:states_language, "~> 0.2.3"},
-  {:xstate, "~> 0.1.0"}
+  {:xstate, "~> 0.1.0"},
+  {:jason, "~> 1.4"}
 ])
 ```
 
@@ -36,17 +37,14 @@ Some blogs and documentation:
 * [Ecto and building state machines](https://blog.appsignal.com/2020/07/14/building-state-machines-in-elixir-with-ecto.html)
 * [about State Machines](https://www.freecodecamp.org/news/state-machines-basics-of-computer-science-d42855debc66/)
 * the libraries: [Xstate](https://hexdocs.pm/xstate/Xstate.html), [Machinery](), [GenStateMachine](https://hexdocs.pm/gen_state_machine/GenStateMachine.html), [:gen_statem](https://www.erlang.org/doc/man/gen_statem.html)
+* A [video](https://www.youtube.com/watch?v=4rNYAvsSkwk) among many.
 
 Below are presented:
 
 * a (simple) module based implementation of a state machine, the "door" example,
 * its implementation by librabries `Xstate` and `Machinery` and `gen_statem`,
-* a time based process with `GenStateMachine`,
+* a time based process with `GenStateMachine`, where you control when you logout an inactive user by using the "timout" action from `:gen_statem` [actions](https://www.erlang.org/doc/man/gen_statem.html#type-action),
 * an NFA with a regex built with `gen_statem``
-  - the JSON traduction of state machines
-
-
-  -- TO CONTINUE THE JSON part --
 
 ## DFA: the Door model
 
@@ -200,6 +198,7 @@ machine = %X.Machine{
       before: fn _ ->
         func.(:before_transition_, "unlocked")
       end,
+      before: fn context -> IO.inspect(context) end,
       callback: fn _ ->
         func.(:after_transition, "locked")
       end
@@ -440,7 +439,7 @@ We can use the previous pattern with a struct in a simple module. To run it cont
 
 <!-- livebook:{"break_markdown":true} -->
 
-We can also use Erlangs' module `:gen_statem`, more precisely use the package [GenStateMachine](https://hexdocs.pm/gen_state_machine/GenStateMachine.html#module-example) to implement this since we can implement [event-timeouts](https://www.erlang.org/doc/man/gen_statem.html#type-event_timeout) "easily". There is no need to set-up your own timers or counters. You add to the callback response the optional action `{timeout, time(ms), :identifier}`. It will be pattern matched by a `handle_event(:timeout, :identifier, state, data)` callback. The `event-timeout` is choosen because any event that arrives cancels this time-out. When a user logs-in, we have a state transition on the event, and we let the callback return the event-timeout action. The timer goes on while no other event cancels it. It will end with a state transition, from "logged-in" to "idle". Any activity will cancel the timer. The "login" state can be hold as long as the session is not "idle". The transition to the "idle" state is monitored by the module and the messages can be captured in a `handle_event(:info?..)`. This callback will return another `event-timeout`, now targetting the `logged_out` state. We can easily insert push-notifications to alert the user.
+We can also use Erlangs' module `:gen_statem`, more precisely use the package [GenStateMachine](https://hexdocs.pm/gen_state_machine/GenStateMachine.html#module-example) to implement this since we can implement actions as "timeouts" ([see event-timeouts](https://www.erlang.org/doc/man/gen_statem.html#type-event_timeout)). There is no need to set-up your own timers or counters. You add to the callback response the optional action `{timeout, time(ms), :identifier}`. It will be pattern matched by a `handle_event(:timeout, :identifier, state, data)` callback. The `event-timeout` is choosen because any event that arrives cancels this time-out. When a user logs-in, we have a state transition on the event, and we let the callback return the event-timeout action. The timer goes on while no other event cancels it. It will end with a state transition, from "logged-in" to "idle". Any activity will cancel the timer. The "login" state can be hold as long as the session is not "idle". The transition to the "idle" state is monitored by the module and the messages can be captured in a `handle_event(:info?..)`. This callback will return another `event-timeout`, now targetting the `logged_out` state. We can easily insert push-notifications to alert the user.
 
 ```elixir
 defmodule Inactive do
@@ -537,57 +536,6 @@ spawn(fn ->
   end
 end)
 ```
-
-## FSM & JSON format
-
-Finite State Machines, You can use the package [states_language](https://github.com/entropealabs/states_language) with its [Hex docs](https://hexdocs.pm/states_language/readme.html). You build a JSON representation and you get Elixir `genstatem` based processes!
-
-From their documentation: "this is based an the [Amazon State Languages](https://states-language.net/spec.html). It compiles to Elixir/gen_statem a JSON representation of your state machine. Such specifications are behind [AWS step functions](https://aws.amazon.com/step-functions/)".
-
-The JSON representation of our door process is:
-
-<!-- livebook:{"break_markdown":true} -->
-
-```js
-{"Comment": "the door DFSM",
-  "StartAt": "locked",
-  "States": {
-    "unlocked": {
-      "Type": "Choice",
-      "Resource": "unlocked",
-      "Choices": [
-        {
-          "StringEquals": ":open"
-          "Next": "opened",
-          "End": true
-        },
-        {
-          "StringEquals": ":lock"
-          "Next": "locked",
-          "End": true
-        },
-      ]
-    },
-    "locked": {
-      "Type": "Task",
-      "Resource": "locked",
-      "TransitionEvent": ":unlock",
-      "Next": "unlocked",
-      "End": true
-    },
-    "opened": {
-      "Type": "Task",
-      "TransitionEvent": ":close",
-      "Next": "unlocked",
-      "End": true
-    }
-  }
-}
-```
-
-<!-- livebook:{"break_markdown":true} -->
-
-An example: <https://github.com/entone/states_language_live_view>
 
 ## NFA: Regex example
 
