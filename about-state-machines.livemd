@@ -184,66 +184,74 @@ The formalism of [Xstate](https://github.com/natserract/xstate) is purely functi
 
 use Xstate.StateMachine
 alias Xstate.StateMachine, as: X
+require Logger
 
 func = fn msg, inside ->
   IO.puts("#{msg} in #{inside}")
   {:ok, msg}
 end
 
+async = fn msg ->
+  Task.async(fn ->
+    Process.sleep(1_000)
+    Logger.info(msg)
+  end)
+end
+
 machine = %X.Machine{
-  initial_state: "unlocked",
+  initial_state: {"unlocked", %{count: 0}},
   mapping: %{
     :lock => %X.Transitions{
       target: "locked",
-      before: fn _ ->
-        func.(:before_transition_, "unlocked")
-      end,
-      before: fn context -> IO.inspect(context) end,
+      before: nil,
       callback: fn _ ->
         func.(:after_transition, "locked")
       end
     },
     :unlock => %X.Transitions{
       target: "unlocked",
-      before: fn _ ->
-        func.(:before_transition_, "locked")
-      end,
-      callback: fn _ ->
-        func.(:after_transition, "unlocked")
+      before: fn -> func.("before__: ", "unlocked") end,
+      callback: fn context ->
+        fn _ -> %{context | instance: %{count: context.instance.count + 1}} end
       end
     },
     :open => %X.Transitions{
       target: "open",
-      before: fn _ ->
-        func.(:before_transition_, "unlocked")
-      end,
-      callback: fn _ ->
-        func.(:after_transition, "opened")
+      before: nil,
+      callback: fn context ->
+        IO.inspect(context.internal.count, label: :after_________________)
       end
     },
     :close => %X.Transitions{
       target: "unlocked",
-      before: fn _ ->
-        func.(:before_transition_, "opened")
-      end,
-      callback: fn _ ->
-        func.(:after_transition, "unlocked")
-      end
+      before: nil,
+      callback: fn _ -> async.("warn the guard.....") end
     }
   },
-  modifiable_states: MapSet.new([""])
+  modifiable_states: MapSet.new(["open"])
 }
 ```
 
 ```elixir
-machine = X.new(machine)
+machine = X.new(machine, %{count: 0})
 ```
 
 ```elixir
-X.transition(machine, "open") |> IO.inspect()
-X.transition(machine, "close") |> IO.inspect()
-X.transition(machine, "lock") |> IO.inspect()
-X.get_states(machine) |> IO.inspect()
+X.transition(machine, :open)
+machine = %{machine | external: %{count: machine.external.count + 1}}
+
+X.transition(machine, :close)
+X.transition(machine, :lock)
+X.transition(machine, :unlock)
+X.transition(machine, :open)
+machine = %{machine | external: %{count: machine.external.count + 1}}
+
+X.transition(machine, :close)
+
+{
+  machine.external.count,
+  X.get_states(machine)
+}
 ```
 
 ## Machinery package
