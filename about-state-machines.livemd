@@ -11,9 +11,9 @@ Mix.install([
 
 ## Introduction
 
-State machines or State Automata are designed to recognize patterns in general; they have a start and an end. and only a finite number of states at a given time (cf [Wikipedia](https://en.wikipedia.org/wiki/Finite-state_machine)). A transition is a change of state in response to some inputs. Automatas don't neccesarily You might be interresed with process-driven state when your process graph is not only a sequential series of events, but has some cycles, or timeouts, or when you need to manage a state in your graph, In all other cases, a module based sequential solution with message passing might be a better solution.
+State machines or State Automata are designed to recognize patterns in general. Only a finite number of states at a given time (cf [Wikipedia](https://en.wikipedia.org/wiki/Finite-state_machine)). A transition is a change of state in response to some inputs. You might be interresed with process-driven state when your process graph is not only a sequential series of events, but has some cycles, or timeouts, or when you need to manage a state in your graph, In all other cases, a module based sequential solution with message passing might be a better solution.
 
-Erlang has an in-build solution `:gen_statem`. This is an event-driven solution.
+Erlang has an in-build solution `:gen_statem`.
 
 Documentation:
 
@@ -21,6 +21,10 @@ Documentation:
 * [Struct implementation](https://blog.appsignal.com/2020/07/14/building-state-machines-in-elixir-with-ecto.html)
 * [Ecto and the building state machines](https://blog.appsignal.com/2020/07/14/building-state-machines-in-elixir-with-ecto.html)
 * the libraries: [Machinery](), [GenStateMachine](https://hexdocs.pm/gen_state_machine/GenStateMachine.html), [event-timeout and :gen_statem](https://www.erlang.org/doc/man/gen_statem.html)
+
+Below are presented some simple module based implementation of a state machine, but also how it works an simple examples, the Door and the  InactiveUser where th inputs are tempoeral (for whioh GenStatem has a great answer), with librbries such as XState, Machinery and GenStateMachine.
+
+TO CONTINUE THE JSON part.
 
 ## DFA: the Door model
 
@@ -404,7 +408,7 @@ alias GenStateMachine, as: GSm
 end)
 ```
 
-## Inactivity module
+## Time base example: Inactive user
 
 We want some pages to be accessible only to logged-in users. For safety, we also want to log them out after four minutes of inactivity. The UX designer asks to show a warning one minute before logging out to inform the user.
 
@@ -570,6 +574,10 @@ The JSON representation of our door process is:
   }
 }
 ```
+
+<!-- livebook:{"break_markdown":true} -->
+
+An example: <https://github.com/entone/states_language_live_view>
 
 ## Non-deterministic Finite Automata: NFA
 
