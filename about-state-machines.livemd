@@ -11,42 +11,48 @@ Mix.install([
 
 ## Introduction
 
-State machines or State Automata are designed to recognize patterns in general. Only a finite number of states at a given time (cf [Wikipedia](https://en.wikipedia.org/wiki/Finite-state_machine)). A transition is a change of state in response to some inputs. You might be interresed with process-driven state when your process graph is not only a sequential series of events, but has some cycles, or timeouts, or when you need to manage a state in your graph, In all other cases, a module based sequential solution with message passing might be a better solution.
+State machines or State Automata are designed to recognize patterns in general (cf [Wikipedia](https://en.wikipedia.org/wiki/Finite-state_machine)). The process takes a finite set of states, and describes the possible transitions, the change of state in response to some inputs.
+
+Our machine `M` is represented as: `(states, inputs, transition_function, init_state, final_admissible_states)`:
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+M = [Q: {:opened, :unlocked, :locked, :trapped}, S: (:open, :close, lock, :unlock),t,:locked, Q]
+
+t: Q x S -> Q
+```
+
+where the transition function `t` is defined by a mapping $t(q_i, s_j) = q_k$. These actions have typically side-effects.
+
+This formalism can be interresting to use when your process graph is not only a sequential series of events, but has some cycles, branches or timeouts.
 
 Erlang has an in-build solution `:gen_statem`.
 
-Documentation:
+Some blogs and documentation:
 
 * [GenStateMachine timeouts](https://dockyard.com/blog/2020/01/31/state-timeouts-with-gen_statem)
 * [Struct implementation](https://blog.appsignal.com/2020/07/14/building-state-machines-in-elixir-with-ecto.html)
-* [Ecto and the building state machines](https://blog.appsignal.com/2020/07/14/building-state-machines-in-elixir-with-ecto.html)
-* the libraries: [Machinery](), [GenStateMachine](https://hexdocs.pm/gen_state_machine/GenStateMachine.html), [event-timeout and :gen_statem](https://www.erlang.org/doc/man/gen_statem.html)
+* [Ecto and building state machines](https://blog.appsignal.com/2020/07/14/building-state-machines-in-elixir-with-ecto.html)
+* [about State Machines](https://www.freecodecamp.org/news/state-machines-basics-of-computer-science-d42855debc66/)
+* the libraries: [Xstate](https://hexdocs.pm/xstate/Xstate.html), [Machinery](), [GenStateMachine](https://hexdocs.pm/gen_state_machine/GenStateMachine.html), [:gen_statem](https://www.erlang.org/doc/man/gen_statem.html)
 
-Below are presented some simple module based implementation of a state machine, but also how it works an simple examples, the Door and the  InactiveUser where th inputs are tempoeral (for whioh GenStatem has a great answer), with librbries such as XState, Machinery and GenStateMachine.
+Below are presented:
 
-TO CONTINUE THE JSON part.
+* a (simple) module based implementation of a state machine, the "door" example,
+* its implementation by librabries `Xstate` and `Machinery` and `gen_statem`,
+* a time based process with `GenStateMachine`,
+* an NFA with a regex built with `gen_statem``
+  - the JSON traduction of state machines
+
+
+  -- TO CONTINUE THE JSON part --
 
 ## DFA: the Door model
 
 **DFA**: given a state and an input, there exists only one output or next state. For this reason it is said to be "deterministic". The words "input" and "event" are equivalent here.
 
-Note that this doesn't mean that a state has a unique "next state" but the combination `{state, input, next_state}` is unique.
-
-Also note that different inputs can return the same next state. For example, one can imagine that only one input can change a certain state, say: $\rm{state}_0 \xrightarrow{\text{input}_0}  \rm{state}_1$,  whilst the other inputs keep the state unchanged, in other words act as the "identity": $i\neq 0 \implies \rm{state}_0 \xrightarrow{\text{input}_i}  \rm{state}_0$, so different poutputs can return the same state.
-
-Let's take the door example. It is a simple **deterministic** finite one. A door can open or closed, locked or unlocked.
-
-Our machine `M` is represented as: (states, inputs, transition_function, init_state, final_admissible_state):
-
-<!-- livebook:{"force_markdown":true} -->
-
-```elixir
-M = [Q:{:opened, :unlocked, :locked, :trapped}, S:(:open, :close, lock, :unlock),t,:locked,any]
-
-t: Q x S -> Q
-```
-
-where the transition function `t` is defined by the map
+Let's take the door example. It is a simple _deterministic_ finite one. A door can open or closed, locked or unlocked. The map of our transitions is:
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -93,7 +99,7 @@ You have several ways to represent this:
 
 ## Struct based implementation
 
-We will hold the state of the process in a _struct_ and build a function that takes this struct, hence the current state, and an event and returns the next state:
+Since a machine is essentially a succession of state transitions, we need to manage the state. The machine will be a module and we will hold the state in a _struct_. The transition function takes this struct (current state) and an event and returns the next state:
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -101,11 +107,11 @@ We will hold the state of the process in a _struct_ and build a function that ta
  (%State{state: current}, event)  ->  %State{state: new_state}
 ```
 
-Thanks to pattern matching, Elixir makes it easy to code all of the allowed transitions. For simplicity,_ all effects of inputs on the states that are not listed as admissible are consdered as trapped, responding with an error tuple_. Although simple, this pattern can be useful
+Thanks to pattern matching, Elixir makes it easy to code all of the allowed transitions. For simplicity, all the effects of inputs on the states that are not listed as admissible are considered as trapped, in other words will generate an error tuple_. Although simple, this pattern can be useful.
 
 <!-- livebook:{"break_markdown":true} -->
 
-We can add anything useful to the struct, a name, a counter. For example, the struct holds a counter that is incremented by 1 each time the state goes to `:opened`. We also easily implement an async task in this "plain" module.
+A transition has typically side-effects. We can add anything useful to the struct, a name, a counter... that can be changed. For example, the struct holds a counter that is incremented by 1 each time the state goes to `:opened`. We also implement an async action triggered when the state leaves hte value `:locked`.
 
 ```elixir
 defmodule Door do
@@ -176,18 +182,20 @@ end)
 The formalism of [Xstate](https://github.com/natserract/xstate) is purely functional and declarative.
 
 ```elixir
-import Xstate
-alias Xstate.StateMachine
+# import Xstate
+
+use Xstate.StateMachine
+alias Xstate.StateMachine, as: X
 
 func = fn msg, inside ->
   IO.puts("#{msg} in #{inside}")
   {:ok, msg}
 end
 
-machine = %StateMachine.Machine{
+machine = %X.Machine{
   initial_state: "unlocked",
   mapping: %{
-    :lock => %StateMachine.Transitions{
+    :lock => %X.Transitions{
       target: "locked",
       before: fn _ ->
         func.(:before_transition_, "unlocked")
@@ -196,7 +204,7 @@ machine = %StateMachine.Machine{
         func.(:after_transition, "locked")
       end
     },
-    :unlock => %StateMachine.Transitions{
+    :unlock => %X.Transitions{
       target: "unlocked",
       before: fn _ ->
         func.(:before_transition_, "locked")
@@ -205,7 +213,7 @@ machine = %StateMachine.Machine{
         func.(:after_transition, "unlocked")
       end
     },
-    :open => %StateMachine.Transitions{
+    :open => %X.Transitions{
       target: "open",
       before: fn _ ->
         func.(:before_transition_, "unlocked")
@@ -214,7 +222,7 @@ machine = %StateMachine.Machine{
         func.(:after_transition, "opened")
       end
     },
-    :close => %StateMachine.Transitions{
+    :close => %X.Transitions{
       target: "unlocked",
       before: fn _ ->
         func.(:before_transition_, "opened")
@@ -224,22 +232,19 @@ machine = %StateMachine.Machine{
       end
     }
   },
-  modifiable_states: MapSet.new(["created"])
+  modifiable_states: MapSet.new([""])
 }
 ```
 
 ```elixir
-spawn(fn ->
-  machine = StateMachine.new(machine)
-  # state before transition
-  # |> StateMachine.get_states() |> IO.inspect()
+machine = X.new(machine)
+```
 
-  # Invoke transition
-  StateMachine.transition(machine, "open") |> IO.inspect()
-  StateMachine.transition(machine, "close") |> IO.inspect()
-  StateMachine.transition(machine, "lock") |> IO.inspect()
-  StateMachine.get_states(machine) |> IO.inspect()
-end)
+```elixir
+X.transition(machine, "open") |> IO.inspect()
+X.transition(machine, "close") |> IO.inspect()
+X.transition(machine, "lock") |> IO.inspect()
+X.get_states(machine) |> IO.inspect()
 ```
 
 ## Machinery package
@@ -315,7 +320,7 @@ require Logger
 end)
 ```
 
-## Erlang's gen_statem module
+## Erlang's "gen_statem" module
 
 We will use the [:gen_statem](https://www.erlang.org/doc/man/gen_statem.html) module (from `Erlang`). It is a `GenServer` like behaviour so is designed for event-driven automatas..
 
@@ -334,7 +339,7 @@ Instead of using `:gen_statem`, we will use the Elixxir librabry `GenStateMachin
 :gen_statem.call(pid, :event) <=> GenStateMachine.Call(pid, :event)
 ```
 
-The callbacks `handle_event` are unchanged. They _pattern match_ on an event and a state and return the next possible state. The generic `handle_call` is:
+The callbacks are `handle_event`. They _pattern match_ on an event and a state and return the next possible state. The generic `handle_call` is:
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -342,7 +347,7 @@ The callbacks `handle_event` are unchanged. They _pattern match_ on an event and
 handle_event({:call, from}, :event, :current_state, data)
 ```
 
-It returns the next possible state.
+It returns the next possible state. Note that you **must** reply as it a synchronous call.
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -350,7 +355,7 @@ It returns the next possible state.
  {:next_state, :next_possible_state, data, [{:reply, from, {:ok, :next_possible_state, data}}]}
 ```
 
-> Note that we can add messages in the returned tuple. In our case, we count the number of times the door has been opened, and return the count.
+> Note that we can run side-effects, and add messages in the returned tuple. In our case, we count the number of times the door has been opened, and return the count.
 
 > Since we use `.call`, all actions must exit before the callback returns. If we run an `Task.async` (as a demo), it must run to completion so we can call it indirectly. This is normal since we want the operation to be atomic.
 
@@ -395,6 +400,11 @@ defmodule GSDoor do
     end)
   end
 end
+```
+
+```elixir
+{:ok, pid} = GSDoor.start()
+GenStateMachine.call(pid, :unlock)
 ```
 
 ```elixir
@@ -544,16 +554,15 @@ The JSON representation of our door process is:
   "States": {
     "unlocked": {
       "Type": "Choice",
+      "Resource": "unlocked",
       "Choices": [
         {
-          "Type": "Task",
-          "TransitionEvent": ":open",
+          "StringEquals": ":open"
           "Next": "opened",
           "End": true
         },
         {
-          "Type": "Task",
-          "TransitionEvent": ":lock",
+          "StringEquals": ":lock"
           "Next": "locked",
           "End": true
         },
@@ -561,8 +570,9 @@ The JSON representation of our door process is:
     },
     "locked": {
       "Type": "Task",
+      "Resource": "locked",
       "TransitionEvent": ":unlock",
-      "Next": "opened",
+      "Next": "unlocked",
       "End": true
     },
     "opened": {
@@ -579,36 +589,35 @@ The JSON representation of our door process is:
 
 An example: <https://github.com/entone/states_language_live_view>
 
-## Non-deterministic Finite Automata: NFA
+## NFA: Regex example
 
-This is the most commun type of machines to represent how "real world" systems are working, such as IOT, robots... Interresingly, regular expressions are functionnaly equivalent. An NFA is a machine designed to be able to filter a set of reponses. With **NFA** machines, some states can have _multiple next states_ for the _same_ input.
+[Source](https://www.freecodecamp.org/news/state-machines-basics-of-computer-science-d42855debc66/)
+
+This is the most commun type of machines to represent how "real world" systems are working, such as IOT, robots...
+
+An **NFA** or "Non deterministic Finite Automata" is a machine designed to be able to filter a set of reponses, ending with an acceptable state or not. With NF machines, some states can have _multiple next states_ for the _same_ input.
 
 Every DFA is an NFA, but not all NFAs are DFAs. The good news is that every NFA can be _converted to_ a DFA. End of the game? Not really, it is complicated to do so, unless the case is simple :)
 
-The immediate question is how to choose the next state?
+The most commun examples of NFA are when using string analysis like **regex**. Given an acceptance criteria, we are looking for which strings are accepted or not by our machine.
 
-* the next state can be choosen at _random_,
-* all the next states can be choosen in _parallel_,
-* the final evaluation will tell if the state is acceptable or not. There is a way to run the process where there is _at least one accepted output_.
+Let's say we want to build a finite state machine that can recognize any strings of letters from the set `Q = {"a","b","c","d"}` that:
 
-The most commun examples of NFA are when using string analysis (like regex). Given an acceptance criteria, we are looking for which strings are accepted or not by our machine.
+* starts with "a"
+* can have zero or many "b" and "c"
+* finishes with the next letter.
 
-Let's say we want to build a finite state machine that can recognize any strings of letters from the set `{"a","b","c","d"}` that starts with "a" and finishes with "d" and can have zero or many "b" and "c". The equivalent regex is `~r/a(b*)(c*)d/`:
+The accepted strings ca be for example, "abbbc", "accd", "abc", "ad". The equivalent regex is `~r/(a(c*d))|(a(b*c))/`:
 
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
-string |> String.match?(string, ~r/a(b*)(c*)d/)
+string |> String.match?(string, ~r/(a(c*d))|(a(b*c))/)
 ```
 
-Some valid strings could be (test in with <https://elixirstream.dev/regex>):
+You can test the regex with <https://elixirstream.dev/regex>:
 
-* "abbbc"
-* "accd"
-* "abcd"
-* "ad"
-
-The NFA diagram will have 5 states:
+We have a NFA because we have multiple outputs under `c` for the state `M`:
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -616,13 +625,11 @@ The NFA diagram will have 5 states:
 stateDiagram-v2
 direction LR
 [*]--> M1: a
-[*]--> M2: a
 M1 --> M1: b
-M2 --> M2: c
-M1 --> C: c
-C --> C: c
-C --> [*]: d
-M2 --> [*]: d
+M1 --> [*]: c
+[*]-->M2: a
+M2-->M2: c
+M2-->[*]: d
 ```
 
 The transition table of the NFA is:
@@ -630,58 +637,62 @@ The transition table of the NFA is:
 |     | a     | b   | c   | d   |
 | --- | ----- | --- | --- | --- |
 | I   | M1,M2 | x   | x   | x   |
-| M1  | x     | M1  | M2  | x   |
-| M2  | x     | x   | M2  | D   |
-| D   | x     | x   | x   | x   |
+| M1  | x     | M1  | D   |     |
+| M2. | x     | x.  | M2  | D   |
+| D   | x     | x   | x   | D   |
 
 <!-- livebook:{"break_markdown":true} -->
 
-The transition table converted into a DFA takes into account that a state can only have one next state. If there are several, you combine them into a new one. Here, we combine M1 and M2 into a new state, M. Then we evaluate where goes M under an input and take the union.
+The transition table converted into a DFA takes into account that a state can only have one next state. If there are several, you combine them into a new one. Here, we combine M1 and M2 into a new state, M12. Then we evaluate where goes M12 under an input and take the union of the states.
 
 |     | a   | b   | c   | d   |
 | --- | --- | --- | --- | --- |
-| I   | M   | x   | x   | x   |
-| M   | x   | M   | M   | x   |
-| D   | x   | x   | x   | x   |
+| I   | M12 | x   | x   | x   |
+| M12 | x.  | M1  | M2D | D   |
+| M2D | x.  | x.  | M2  | D.  |
+| M1  | x   | M1  | D   | x   |
+| M2. | x.  | x.  | M2  | D.  |
+| D   | x   | x   | x   | D   |
 
 <!-- livebook:{"break_markdown":true} -->
 
-The corresponding DFA of our machine is therefor:
+The corresponding DFA of our machine is:
 
 ```mermaid
 stateDiagram-v2
 direction LR
-  [*]-->M: a
-  M-->M: b
-  M-->M: c
-  M-->[*]: d
+  [*]-->M12: a
+  M12-->M1: b
+  M12-->M2D: c
+  M12-->[*]: d
+  M2D-->M2: c
+  M2D-->[*]: d
+  M1-->M1: b
+  M1-->[*]: c
+  M2-->M2: c
+  M2-->[*]: d
 ```
+
+You observe of course an increase in the number of states.
 
 <!-- livebook:{"break_markdown":true} -->
 
-We thus have the following transitions:
-
-<!-- livebook:{"force_markdown":true} -->
-
-```elixir
-{"I", "a", "M"}
-{"M", "b", "M"},
-{"M", "c", "M"},
-{"M", "d", "D"}
-```
-
-<!-- livebook:{"break_markdown":true} -->
-
-We can code this with `:gen_statem`. We need to convert strings into atoms.
+We can code this with `:gen_statem` where we use atoms.
 
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
 {event, state} -> new_state
-{:a, :i_s}-> :m_s
-{:b, :m_s} -> :m_s
-{:c, :m_s} -> :m_s
-{:d, :m_s} -> :d_s
+{:a, :i}-> :m12
+{:c, :m12} -> :m2d
+{:b, :m12} -> :m1
+{:d, :m12} -> :d
+{:c, :m2d} -> :m2
+{:d, :m2d} -> :d
+{:c, :m2} -> :m2
+{:d, :m2} -> :d
+{:b, :m1}-> :m1
+{:c, :m1} -> :d
 ```
 
 ```elixir
@@ -693,7 +704,7 @@ defmodule DFA do
   end
 
   @impl :gen_statem
-  def init(_), do: {:ok, :i_s, 0}
+  def init(_), do: {:ok, :i, nil}
 
   @impl :gen_statem
   def terminate(reason, _state, _data),
@@ -703,20 +714,54 @@ defmodule DFA do
   def callback_mode, do: :handle_event_function
 
   @impl :gen_statem
-  def handle_event({:call, from}, :a, :i_s, data) do
-    {:next_state, :m_s, data, [{:reply, from, {:ok, "a"}}]}
+  def handle_event({:call, from}, :a, :i, _) do
+    data = "a"
+    {:next_state, :m12, data, [{:reply, from, {:continue, data}}]}
   end
 
-  def handle_event({:call, from}, :b, :m_s, data) do
-    {:next_state, :m_s, data, [{:reply, from, {:ok, "b"}}]}
+  def handle_event({:call, from}, :b, :m12, data) do
+    data = data <> "b"
+    {:next_state, :m1, data, [{:reply, from, {:continue, data}}]}
   end
 
-  def handle_event({:call, from}, :c, :m_s, data) do
-    {:next_state, :m_s, data, [{:reply, from, {:ok, "c"}}]}
+  def handle_event({:call, from}, :c, :m12, data) do
+    data = data <> "c"
+    {:next_state, :m2d, data, [{:reply, from, {:ok, data}}]}
   end
 
-  def handle_event({:call, from}, :d, :m_s, data) do
-    {:next_state, :d_s, data, [{:reply, from, {:ok, "d"}}]}
+  def handle_event({:call, from}, :d, :m12, data) do
+    data = data <> "d"
+    {:next_state, :d, data, [{:reply, from, {:ok, data}}]}
+  end
+
+  def handle_event({:call, from}, :c, :m2d, data) do
+    data = data <> "c"
+    {:next_state, :m2d, data, [{:reply, from, {:continue, data}}]}
+  end
+
+  def handle_event({:call, from}, :d, :m2d, data) do
+    data = data <> "d"
+    {:next_state, :d, data, [{:reply, from, {:ok, data}}]}
+  end
+
+  def handle_event({:call, from}, :c, :m2, data) do
+    data = data <> "c"
+    {:next_state, :m2, data, [{:reply, from, {:continue, data}}]}
+  end
+
+  def handle_event({:call, from}, :d, :m2, data) do
+    data = data <> "d"
+    {:next_state, :d, data, [{:reply, from, {:ok, data}}]}
+  end
+
+  def handle_event({:call, from}, :b, :m1, data) do
+    data = data <> "b"
+    {:next_state, :m1, data, [{:reply, from, {:continue, data}}]}
+  end
+
+  def handle_event({:call, from}, :c, :m1, data) do
+    data = data <> "c"
+    {:next_state, :d, data, [{:reply, from, {:ok, data}}]}
   end
 
   def handle_event({:call, from}, _event, _content, data) do
@@ -725,8 +770,13 @@ defmodule DFA do
 end
 ```
 
+Let's test if we have build the regex `~r/(a(c*d))|(a(b*c))/)`:
+
 ```elixir
-s1 = [:a, :b, :b, :b, :c, :d]
+s1 = [:a, :c, :b, :b, :c, :e, :c, :d, :f]
+s2 = [:a, :f, :b, :b, :c, :e, :c, :d, :f]
+s3 = [:a, :c, :b, :c, :d, :d, :d]
+s4 = [:a, :b, :b, :d]
 
 defmodule Test do
   alias :gen_statem, as: GS
@@ -734,17 +784,22 @@ defmodule Test do
   def run(s) do
     {:ok, pid} = DFA.start()
 
-    s
-    |> Enum.reduce("", fn e, acc ->
-      case GS.call(pid, e) do
-        {:ok, letter} -> acc <> letter
+    Enum.reduce(s, "", fn letter, acc ->
+      case GS.call(pid, letter) do
+        {:continue, string} -> {:partial_match, string}
+        {:ok, string} -> {:match, string}
         {:error, _} -> acc
       end
     end)
   end
 end
 
-Test.run(s1)
+{
+  Test.run(s1),
+  Test.run(s2),
+  Test.run(s3),
+  Test.run(s4)
+}
 ```
 
 ## Testing
