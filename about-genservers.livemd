@@ -142,35 +142,58 @@ The function `System.schedulers_online()` returns the number of available cores 
 
 We want to mimic a cron job with a Task. The task runs another task and is turned into a long-running process by calling itself.
 
-> Note that we _unlinked_ the main process from the async task, and _supervised_ function [Task.Superivsor.async_nolink](https://hexdocs.pm/elixir/1.14.3/Task.Supervisor.html#async_nolink/3) since this would be the correct way to run an async job (see Supervisor) from this task.
+> Note that we should have used the supervised form [Task.Superivsor.async_nolink](https://hexdocs.pm/elixir/1.14.3/Task.Supervisor.html#async_nolink/3).
+
+Take a look at the [do not sleep](https://hexdocs.pm/elixir/Process.html#sleep/1) paragraph. This makes the loop more complicated since we need to continously receive messages as seen below as Tasks have no message handler. Another implementation is done further down with a genserver, who supports messages handling among other benefits.
 
 ```elixir
 defmodule Period do
   use Task
 
   def start(args) do
-    Task.start(__MODULE__, :run, [args])
+    args = Keyword.merge(args, parent: self())
+    Task.start(__MODULE__, :do_run, [args])
   end
 
-  def run([every: time, run: f] = args) do
-    Task.Supervisor.async_nolink(MyTaskSupervisor, fn -> apply(f, []) end)
-    Process.sleep(time)
-    run(args)
+  def do_run([every: time, run: f, parent: parent] = args) do
+    Task.async(fn -> apply(f, []) end)
+    # send to the main process
+    Process.send_after(parent, {:loop, args}, time)
   end
 end
 
 defmodule Clean do
-  def up, do: IO.puts(:cleaned!)
+  require Logger
+  def up, do: Logger.info("cleaned!")
 end
 
-{:ok, pid} =
-  Period.start(
-    every: 3_000,
-    run: fn -> Clean.up() end
-  )
+# continous listener on the main process
+defmodule Listen do
+  require Logger
 
-# Process.flag(:trap_exit, true) <-- if you use `Task.start_link` to trap the exit.
-Process.sleep(15_000)
+  def loop do
+    receive do
+      {:loop, args} ->
+        # on message, run the task
+        Period.do_run(args)
+        loop()
+    after
+      10_000 -> :timeout
+    end
+  end
+end
+
+pid =
+  spawn(fn ->
+    Period.start(
+      every: 3_000,
+      run: fn -> Clean.up() end
+    )
+
+    Listen.loop()
+  end)
+
+Process.sleep(10_000)
 Process.exit(pid, :shutdown)
 ```
 
