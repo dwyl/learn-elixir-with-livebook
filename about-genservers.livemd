@@ -169,8 +169,6 @@ end
 
 # continous listener on the main process
 defmodule Listen do
-  require Logger
-
   def loop do
     receive do
       {:loop, args} ->
@@ -183,6 +181,7 @@ defmodule Listen do
   end
 end
 
+##### The final API:
 pid =
   spawn(fn ->
     Period.start(
