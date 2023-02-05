@@ -44,7 +44,7 @@ Below are presented:
 * a (simple) module based implementation of a state machine, the "door" example,
 * its implementation by librabries `Xstate` and `Machinery` and `gen_statem`,
 * a time based process with `GenStateMachine`, where you control when you logout an inactive user by using the "timout" action from `:gen_statem` [actions](https://www.erlang.org/doc/man/gen_statem.html#type-action),
-* an NFA with a regex built with `gen_statem``
+* an NFA with a regex built with `gen_statem`
 
 ## DFA: the Door model
 
@@ -54,14 +54,16 @@ Let's take the door example. It is a simple _deterministic_ finite one. A door c
 
 <!-- livebook:{"force_markdown":true} -->
 
+<!-- livebook:{"force_markdown":true} -->
+
 ```elixir
-%{
- "locked"     => "unlocked",    #<-- :unlock
-  "unlocked"  => "locked",      #<-- :lock
-  "unlocked"  => "opened",      #<-- :open
-  "opened"    => "unlocked",    #<-- :close
-  "*"         => "trap"         #<-- :dead_end
-}
+  %{
+   "locked"     => "unlocked",    #<-- :unlock
+    "unlocked"  => "locked",      #<-- :lock
+    "unlocked"  => "opened",      #<-- :open
+    "opened"    => "unlocked",    #<-- :close
+    "*"         => "trap"         #<-- :dead_end
+  }
 ```
 
 For example, when the state `:locked` receives the event `:unlock`, the state changes to `:unlocked`. Depending on your needs, you may consider that for any _other state_, the effect of the event `:unlock` is:
@@ -74,16 +76,16 @@ You have several ways to represent this:
 * an example of state transition diagram:
 
 ```mermaid
-  stateDiagram-v2
-  direction LR
+    stateDiagram-v2
+    direction LR
 
-  opened --> unlocked: close
-  opened --> ❌: lock, unlock, open
-  locked --> unlocked: unlock
-  locked --> ❌: lock, open, close
-  unlocked --> opened: open
-  unlocked --> unlocked: unlock, close
-  unlocked --> locked: lock
+    opened --> unlocked: close
+    opened --> ❌: lock, unlock, open
+    locked --> unlocked: unlock
+    locked --> ❌: lock, open, close
+    unlocked --> opened: open
+    unlocked --> unlocked: unlock, close
+    unlocked --> locked: lock
 ```
 
 * an example of the corresponding state/event transition table:
@@ -97,17 +99,17 @@ You have several ways to represent this:
 
 ## Struct based implementation
 
-Since a machine is essentially a succession of state transitions, we need to manage the state. The machine will be a module and we will hold the state in a _struct_. The transition function takes this struct (current state) and an event and returns the next state:
+We need to manage the state for the transitions. The machine will be a module and we will hold the state in a _struct_. As said before, the transition function `t` takes this struct (current state) and an event and returns the next state: $Q \times S \to Q$
+
+<!-- livebook:{"force_markdown":true} -->
 
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
- (%State{state: current}, event)  ->  %State{state: new_state}
+   (%State{state: current}, event)  ->  %State{state: new_state}
 ```
 
 Thanks to pattern matching, Elixir makes it easy to code all of the allowed transitions. For simplicity, all the effects of inputs on the states that are not listed as admissible are considered as trapped, in other words will generate an error tuple_. Although simple, this pattern can be useful.
-
-<!-- livebook:{"break_markdown":true} -->
 
 A transition has typically side-effects. We can add anything useful to the struct, a name, a counter... that can be changed. For example, the struct holds a counter that is incremented by 1 each time the state goes to `:opened`. We also implement an async action triggered when the state leaves hte value `:locked`.
 
@@ -152,7 +154,7 @@ defmodule Door do
   """
   def call_guard do
     Task.async(fn ->
-      Process.sleep(1_000)
+      Process.sleep(100)
       Logger.debug("warn the guards.....")
     end)
   end
@@ -177,80 +179,81 @@ end)
 
 ## Xstate package
 
-The formalism of [Xstate](https://github.com/natserract/xstate) is purely functional and declarative.
+We follow the documentation of [Xstate](https://github.com/natserract/xstate).
 
 ```elixir
-# import Xstate
+defmodule XDoor do
+  use Xstate.StateMachine
+  alias Xstate.StateMachine, as: X
+  require Logger
 
-use Xstate.StateMachine
-alias Xstate.StateMachine, as: X
-require Logger
+  def puts(msg, inside) do
+    Logger.info("#{msg} in #{inside}")
+    {:ok, msg}
+  end
 
-func = fn msg, inside ->
-  IO.puts("#{msg} in #{inside}")
-  {:ok, msg}
-end
-
-async = fn msg ->
-  Task.async(fn ->
-    Process.sleep(1_000)
+  def async(msg) do
     Logger.info(msg)
-  end)
-end
+    {:ok, msg}
+  end
 
-machine = %X.Machine{
-  initial_state: {"unlocked", %{count: 0}},
-  mapping: %{
-    :lock => %X.Transitions{
-      target: "locked",
-      before: nil,
-      callback: fn _ ->
-        func.(:after_transition, "locked")
-      end
-    },
-    :unlock => %X.Transitions{
-      target: "unlocked",
-      before: fn -> func.("before__: ", "unlocked") end,
-      callback: fn context ->
-        fn _ -> %{context | instance: %{count: context.instance.count + 1}} end
-      end
-    },
-    :open => %X.Transitions{
-      target: "open",
-      before: nil,
-      callback: fn context ->
-        IO.inspect(context.internal.count, label: :after_________________)
-      end
-    },
-    :close => %X.Transitions{
-      target: "unlocked",
-      before: nil,
-      callback: fn _ -> async.("warn the guard.....") end
+  def machine do
+    %X.Machine{
+      initial_state: {"unlocked", %{count: 0}},
+      mapping: %{
+        :lock => %X.Transitions{
+          target: "locked",
+          before: nil,
+          callback: fn _ -> puts(:after_transition, "locked") end
+        },
+        :unlock => %X.Transitions{
+          target: "unlocked",
+          before: fn -> puts("before__: ", "unlocked") end,
+          callback: fn context ->
+            fn _ -> %{context | instance: %{count: context.instance.count + 1}} end
+          end
+        },
+        :open => %X.Transitions{
+          target: "open",
+          before: nil,
+          callback: fn context -> Logger.debug(context.internal.count) end
+        },
+        :close => %X.Transitions{
+          target: "unlocked",
+          before: nil,
+          callback: fn _ -> async("warn the guard.....") end
+        }
+      },
+      modifiable_states: MapSet.new(["open"])
     }
-  },
-  modifiable_states: MapSet.new(["open"])
-}
+  end
+
+  def new(external), do: machine() |> X.new(external)
+
+  def open(machine), do: X.transition(machine, :open)
+  def close(machine), do: X.transition(machine, :close)
+  def lock(machine), do: X.transition(machine, :lock)
+  def unlock(machine), do: X.transition(machine, :unlock)
+  def state(machine), do: X.get_states(machine)
+end
 ```
 
 ```elixir
-machine = X.new(machine, %{count: 0})
+machine = XDoor.new(%{count: 0})
 ```
 
 ```elixir
-X.transition(machine, :open)
+XDoor.open(machine)
 machine = %{machine | external: %{count: machine.external.count + 1}}
-
-X.transition(machine, :close)
-X.transition(machine, :lock)
-X.transition(machine, :unlock)
-X.transition(machine, :open)
+XDoor.close(machine)
+XDoor.lock(machine)
+XDoor.unlock(machine)
+XDoor.open(machine)
 machine = %{machine | external: %{count: machine.external.count + 1}}
-
-X.transition(machine, :close)
 
 {
   machine.external.count,
-  X.get_states(machine)
+  XDoor.state(machine)
 }
 ```
 
@@ -291,14 +294,11 @@ defmodule MachineryDoor do
     struct
   end
 
-  def async_task do
-    Task.async(fn ->
-      Process.sleep(1_000)
-      Logger.debug("warn the guard____")
-    end)
-  end
+  def async_task, do: Task.async(fn -> Logger.debug("warn the guard____") end)
 end
 ```
+
+We can test it:
 
 ```elixir
 require Logger
@@ -340,13 +340,19 @@ You declare the `callback_mode` choosed in your module. In our case,`handle_even
 
 Instead of using `:gen_statem`, we will use the Elixxir librabry `GenStateMachine`. The client function is:
 
+<!-- livebook:{"break_markdown":true} -->
+
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
 :gen_statem.call(pid, :event) <=> GenStateMachine.Call(pid, :event)
 ```
 
-The callbacks are `handle_event`. They _pattern match_ on an event and a state and return the next possible state. The generic `handle_call` is:
+<!-- livebook:{"break_markdown":true} -->
+
+The callback is `handle_event`. You _pattern match_ on an `event` and a `state` and return the next possible state and a mandatory reply. The generic `handle_call` is:
+
+<!-- livebook:{"break_markdown":true} -->
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -354,13 +360,19 @@ The callbacks are `handle_event`. They _pattern match_ on an event and a state a
 handle_event({:call, from}, :event, :current_state, data)
 ```
 
-It returns the next possible state. Note that you **must** reply as it a synchronous call.
+<!-- livebook:{"break_markdown":true} -->
+
+The return contains a list of so-called "actions":
+
+<!-- livebook:{"break_markdown":true} -->
 
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
- {:next_state, :next_possible_state, data, [{:reply, from, {:ok, :next_possible_state, data}}]}
+{:next_state, :next_possible_state, data, [{:reply, from, {:ok, :next_possible_state, data}}]
 ```
+
+<!-- livebook:{"break_markdown":true} -->
 
 > Note that we can run side-effects, and add messages in the returned tuple. In our case, we count the number of times the door has been opened, and return the count.
 
@@ -400,18 +412,8 @@ defmodule GSDoor do
     {:keep_state, data, [{:reply, from, {:error, :invalid_transition}}]}
   end
 
-  def call_guard do
-    Task.async(fn ->
-      Process.sleep(2_000)
-      IO.puts("warn the guards___")
-    end)
-  end
+  def call_guard, do: Task.async(fn -> Logger.info("warn the guards___") end)
 end
-```
-
-```elixir
-{:ok, pid} = GSDoor.start()
-GenStateMachine.call(pid, :unlock)
 ```
 
 ```elixir
@@ -432,20 +434,16 @@ We want some pages to be accessible only to logged-in users. For safety, we also
 This is a deterministic event-driven process where we have ot consider timers:
 
 ```mermaid
-  stateDiagram-v2
-  direction LR
+    stateDiagram-v2
+    direction LR
 
-  idle --> logged_out: 1_min_inactivity
-  logged_out --> logged_in: login
-  logged_in --> idle: 3_min_inactivity
-  idle --> logged_in: activate
+    idle --> logged_out: 1_min_inactivity
+    logged_out --> logged_in: login
+    logged_in --> idle: 3_min_inactivity
+    idle --> logged_in: activate
 ```
 
-<!-- livebook:{"break_markdown":true} -->
-
 We can use the previous pattern with a struct in a simple module. To run it continuously, we would need to run it in a `Task` and loop. One problem with this approach is that we cannot communicate with this process. We would need to use a Genserver.
-
-<!-- livebook:{"break_markdown":true} -->
 
 We can also use Erlangs' module `:gen_statem`, more precisely use the package [GenStateMachine](https://hexdocs.pm/gen_state_machine/GenStateMachine.html#module-example) to implement this since we can implement actions as "timeouts" ([see event-timeouts](https://www.erlang.org/doc/man/gen_statem.html#type-event_timeout)). There is no need to set-up your own timers or counters. You add to the callback response the optional action `{timeout, time(ms), :identifier}`. It will be pattern matched by a `handle_event(:timeout, :identifier, state, data)` callback. The `event-timeout` is choosen because any event that arrives cancels this time-out. When a user logs-in, we have a state transition on the event, and we let the callback return the event-timeout action. The timer goes on while no other event cancels it. It will end with a state transition, from "logged-in" to "idle". Any activity will cancel the timer. The "login" state can be hold as long as the session is not "idle". The transition to the "idle" state is monitored by the module and the messages can be captured in a `handle_event(:info?..)`. This callback will return another `event-timeout`, now targetting the `logged_out` state. We can easily insert push-notifications to alert the user.
 
@@ -455,8 +453,8 @@ defmodule Inactive do
   alias GenStateMachine, as: GSm
 
   require Logger
-  @timer1 10_000
-  @timer2 10_000
+  @timer1 5_000
+  @timer2 5_000
 
   def start(name: user), do: GSm.start(__MODULE__, user, [:debug])
   def init(user), do: {:ok, :logged_out, %{name: user, state: :logged_out, pid: nil}}
@@ -479,7 +477,7 @@ defmodule Inactive do
   # activate session from any moment, transitions to :logged_in
   def handle_event({:call, from}, :activate, _, data) do
     data = %{data | state: :logged_in}
-    push_notification(":-- Reset session timers")
+    push_notification(":-- User reactive. Reset session timers")
 
     {:next_state, :logged_in, data,
      [{:reply, from, :renewed_session}, {:timeout, @timer1, :first_timeout}]}
@@ -530,16 +528,18 @@ alias GenStateMachine, as: GS
 GS.call(pid, :login)
 ```
 
+Let's run a random sequence to simulate a users' activity:
+
 ```elixir
 {:ok, pid} = Inactive.start(name: "John")
 alias GenStateMachine, as: GSm
 GSm.call(pid, :login)
 
 spawn(fn ->
-  for _ <- 1..5 do
+  for _ <- 1..3 do
     if Process.alive?(pid) do
       GSm.call(pid, :activate)
-      (Enum.random(5..25) * 1000) |> Process.sleep()
+      (Enum.random(2..20) * 1000) |> Process.sleep()
     end
   end
 end)
@@ -565,11 +565,15 @@ Let's say we want to build a finite state machine that can recognize any strings
 
 The accepted strings ca be for example, "abbbc", "accd", "abc", "ad". The equivalent regex is `~r/(a(c*d))|(a(b*c))/`:
 
+<!-- livebook:{"break_markdown":true} -->
+
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
-string |> String.match?(string, ~r/(a(c*d))|(a(b*c))/)
+  string |> String.match?(string, ~r/(a(c*d))|(a(b*c))/)
 ```
+
+<!-- livebook:{"break_markdown":true} -->
 
 You can test the regex with <https://elixirstream.dev/regex>:
 
@@ -578,14 +582,14 @@ We have a NFA because we have multiple outputs under `c` for the state `M`:
 <!-- livebook:{"break_markdown":true} -->
 
 ```mermaid
-stateDiagram-v2
-direction LR
-[*]--> M1: a
-M1 --> M1: b
-M1 --> [*]: c
-[*]-->M2: a
-M2-->M2: c
-M2-->[*]: d
+  stateDiagram-v2
+  direction LR
+  [*]--> M1: a
+  M1 --> M1: b
+  M1 --> [*]: c
+  [*]-->M2: a
+  M2-->M2: c
+  M2-->[*]: d
 ```
 
 The transition table of the NFA is:
@@ -615,25 +619,23 @@ The transition table converted into a DFA takes into account that a state can on
 The corresponding DFA of our machine is:
 
 ```mermaid
-stateDiagram-v2
-direction LR
-  [*]-->M12: a
-  M12-->M1: b
-  M12-->M2D: c
-  M12-->[*]: d
-  M2D-->M2: c
-  M2D-->[*]: d
-  M1-->M1: b
-  M1-->[*]: c
-  M2-->M2: c
-  M2-->[*]: d
+  stateDiagram-v2
+  direction LR
+    [*]-->M12: a
+    M12-->M1: b
+    M12-->M2D: c
+    M12-->[*]: d
+    M2D-->M2: c
+    M2D-->[*]: d
+    M1-->M1: b
+    M1-->[*]: c
+    M2-->M2: c
+    M2-->[*]: d
 ```
 
 You observe of course an increase in the number of states.
 
 <!-- livebook:{"break_markdown":true} -->
-
-We can code this with `:gen_statem` where we use atoms.
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -651,13 +653,15 @@ We can code this with `:gen_statem` where we use atoms.
 {:c, :m1} -> :d
 ```
 
+<!-- livebook:{"break_markdown":true} -->
+
+We can code this with `:gen_statem` where we use atoms.
+
 ```elixir
 defmodule DFA do
   @behaviour :gen_statem
 
-  def start do
-    :gen_statem.start(__MODULE__, :ok, [])
-  end
+  def start, do: :gen_statem.start(__MODULE__, :ok, [])
 
   @impl :gen_statem
   def init(_), do: {:ok, :i, nil}
@@ -669,56 +673,31 @@ defmodule DFA do
   @impl :gen_statem
   def callback_mode, do: :handle_event_function
 
+  defp handle(data, letter, next, from, step) do
+    data = data <> letter
+    {:next_state, next, data, [{:reply, from, {step, data}}]}
+  end
+
   @impl :gen_statem
-  def handle_event({:call, from}, :a, :i, _) do
-    data = "a"
-    {:next_state, :m12, data, [{:reply, from, {:continue, data}}]}
-  end
+  def handle_event({:call, from}, :a, :i, _), do: handle("", "a", :m12, from, :continue)
 
-  def handle_event({:call, from}, :b, :m12, data) do
-    data = data <> "b"
-    {:next_state, :m1, data, [{:reply, from, {:continue, data}}]}
-  end
+  def handle_event({:call, from}, :b, :m12, data), do: handle(data, "b", :m1, from, :continue)
 
-  def handle_event({:call, from}, :c, :m12, data) do
-    data = data <> "c"
-    {:next_state, :m2d, data, [{:reply, from, {:ok, data}}]}
-  end
+  def handle_event({:call, from}, :c, :m12, data), do: handle(data, "c", :m2d, from, :ok)
 
-  def handle_event({:call, from}, :d, :m12, data) do
-    data = data <> "d"
-    {:next_state, :d, data, [{:reply, from, {:ok, data}}]}
-  end
+  def handle_event({:call, from}, :d, :m12, data), do: handle(data, "d", :d, from, :ok)
 
-  def handle_event({:call, from}, :c, :m2d, data) do
-    data = data <> "c"
-    {:next_state, :m2d, data, [{:reply, from, {:continue, data}}]}
-  end
+  def handle_event({:call, from}, :c, :m2d, data), do: handle(data, "c", :m2d, from, :continue)
 
-  def handle_event({:call, from}, :d, :m2d, data) do
-    data = data <> "d"
-    {:next_state, :d, data, [{:reply, from, {:ok, data}}]}
-  end
+  def handle_event({:call, from}, :d, :m2d, data), do: handle(data, "d", :d, from, :ok)
 
-  def handle_event({:call, from}, :c, :m2, data) do
-    data = data <> "c"
-    {:next_state, :m2, data, [{:reply, from, {:continue, data}}]}
-  end
+  def handle_event({:call, from}, :c, :m2, data), do: handle(data, "c", :m2, from, :continue)
 
-  def handle_event({:call, from}, :d, :m2, data) do
-    data = data <> "d"
-    {:next_state, :d, data, [{:reply, from, {:ok, data}}]}
-  end
+  def handle_event({:call, from}, :d, :m2, data), do: handle(data, "d", :d, from, :ok)
 
-  def handle_event({:call, from}, :b, :m1, data) do
-    data = data <> "b"
-    {:next_state, :m1, data, [{:reply, from, {:continue, data}}]}
-  end
+  def handle_event({:call, from}, :b, :m1, data), do: handle(data, "b", :m1, from, :continue)
 
-  def handle_event({:call, from}, :c, :m1, data) do
-    data = data <> "c"
-    {:next_state, :d, data, [{:reply, from, {:ok, data}}]}
-  end
+  def handle_event({:call, from}, :c, :m1, data), do: handle(data, "c", :d, from, :ok)
 
   def handle_event({:call, from}, _event, _content, data) do
     {:keep_state, data, [{:reply, from, {:error, :invalid_transition}}]}
@@ -733,11 +712,13 @@ s1 = [:a, :c, :b, :b, :c, :e, :c, :d, :f]
 s2 = [:a, :f, :b, :b, :c, :e, :c, :d, :f]
 s3 = [:a, :c, :b, :c, :d, :d, :d]
 s4 = [:a, :b, :b, :d]
+s5 = [:a, :c, :c, :c]
+s6 = [:a, :c, :c, :c, :d]
 
-defmodule Test do
+defmodule Run do
   alias :gen_statem, as: GS
 
-  def run(s) do
+  def test(s) do
     {:ok, pid} = DFA.start()
 
     Enum.reduce(s, "", fn letter, acc ->
@@ -751,101 +732,11 @@ defmodule Test do
 end
 
 {
-  Test.run(s1),
-  Test.run(s2),
-  Test.run(s3),
-  Test.run(s4)
+  Run.test(s1),
+  Run.test(s2),
+  Run.test(s3),
+  Run.test(s4),
+  Run.test(s5),
+  Run.test(s6)
 }
-```
-
-## Testing
-
-To be continued...
-
-```elixir
-ExUnit.start(auto_run: false)
-
-defmodule DoorTest do
-  use ExUnit.Case, async: false
-  import ExUnit.CaptureIO
-
-  doctest Door
-
-  describe "test Machniery module" do
-    test "struct" do
-      assert %MachineryDoor{} == %{__struct__: MachnieryDoor, count: 0, door: "locked"}
-    end
-
-    test "init" do
-      result = Machinery.transition_to(%MachineryDoor{}, MachineryDoor, "unlocked")
-      IO.inspect(result)
-      assert {:ok, %{__struct__: MachineryDoor, count: 0, door: "opened"}} == result
-    end
-
-    test "sequence" do
-      sequence = [
-        "unlocked",
-        "closed",
-        "opened",
-        "opened",
-        "unlocked",
-        "opened",
-        "unlocked",
-        "locked",
-        "unlocked",
-        "opened"
-      ]
-
-      result =
-        Enum.reduce(sequence, %MachineryDoor{}, fn state, struct ->
-          case Machinery.transition_to(struct, MachineryDoor, state) do
-            {:ok, new_struct} ->
-              IO.inspect(new_struct.door)
-              new_struct
-
-            {:error, msg} ->
-              IO.puts("#{msg}")
-              struct
-          end
-        end)
-
-      assert {:ok, %{__struct__: MachineryDoor, count: 3, door: "opened"}} == result
-    end
-  end
-
-  describe "test Door module" do
-    test "test initial struct" do
-      assert %Door{}.name == nil
-      assert %Door{}.state == :unlocked
-    end
-
-    test "test steps" do
-      door = %Door{name: "home", state: :unlocked}
-      {:ok, door} = Door.transition_to(door, :open)
-
-      assert door.state == :opened
-      assert door.name == "home"
-
-      {:ok, door} = Door.transition_to(door, :close)
-
-      assert door.state == :unlocked
-      assert door.name == "home"
-
-      {:ok, door} = Door.transition_to(door, :open)
-      assert door.state == :opened
-      assert door.count == 1
-    end
-
-    test "assert error" do
-      {status, message} = Door.transition_to(%Door{}, :open)
-      assert status == :error
-      assert message == :invalid_transition
-    end
-
-    test "async IO.puts" do
-      exec = fn -> Door.call_guard() end
-      assert capture_io(exec) =~ "warn the guards"
-    end
-  end
-end
 ```
