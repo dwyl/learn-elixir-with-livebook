@@ -166,7 +166,7 @@ defmodule SDoor do
 end
 ```
 
-We will test a pipeline of _events_ transitions: [unlock]->[open]->[lock]. The last one is meant to fail.
+We will test a pipeline of _events_ transitions: **[unlock]->[open]->[lock]**. The last one is meant to fail.
 
 ```elixir
 SDoor.handle_event(%SDoor{state: :locked}, :unlock)
@@ -245,7 +245,7 @@ defmodule MDoor do
 end
 ```
 
-We use `Machinery.transition_to/3` to declare the next state we want to reach. We will test a pipeline of _state_ transitions: [locked]->[unlocked]->[opened]->[locked]. The last one is meant to fail.
+We use `Machinery.transition_to/3` to declare the next state we want to reach. We will test a pipeline of _state_ transitions: **[locked]->[unlocked]->[opened]->[locked]**. The last one is meant to fail.
 
 ```elixir
 %MDoor{name: "kitchen"}
@@ -556,6 +556,10 @@ The return contains a list of so-called "[actions](https://www.erlang.org/doc/ma
 {:next_state, :next_possible_state, data, [{:reply, from, <your_reply>}]
 ```
 
+<!-- livebook:{"break_markdown":true} -->
+
+Let's implement the door with `:gen_statem`. We implement the 4 events (the "verbs") on the 3 states in the `handle_event` callback:
+
 ```elixir
 defmodule GSDoor do
   # @behaviour GSm
@@ -594,9 +598,13 @@ defmodule GSDoor do
 end
 ```
 
-> Note that we can run side-effects, and add messages in the returned tuple. In our case, we count the number of times the door has been opened, and return the count.
+> Note the side-effects, and add messages in the returned tuple: we count the number of times the door has been opened, and return the count.
 
 > With the synchronous `.call`, all actions must exit before the callback returns respecting the Run To Completion standard semantics of processing events. If we run an `Task.async` (as a demo), it must run to completion so we can call it indirectly. This is normal since we want the operation to be atomic.
+
+<!-- livebook:{"break_markdown":true} -->
+
+We can test it:
 
 ```elixir
 {:ok, pid} = GSDoor.start()
@@ -857,7 +865,7 @@ You observe of course an increase in the number of states.
 
 <!-- livebook:{"break_markdown":true} -->
 
-We can code this with `:gen_statem` where we use atoms.
+We can code this with `:gen_statem` where we use atoms. We have 10 events to handle.
 
 ```elixir
 defmodule DFA do
