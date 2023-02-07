@@ -10,7 +10,8 @@ Mix.install([
   {:kino_db, "~> 0.2.1"},
   # {:exqlite, "~> 0.11.0"},
   {:ecto_sqlite3, "~> 0.9.1"},
-  {:ecto_sql, "~> 3.9"}
+  {:ecto_sql, "~> 3.9"},
+  {:kino_kroki, "~> 0.1"}
 ])
 ```
 
@@ -397,14 +398,14 @@ direction LR
 
   locked --> unlocked: unlock
   note right of locked
-    send email on:
-    [locked] -> [unlocked]
+    on [locked] to [unlocked]
+    incr count +1 & send email
     ok
   end note
   unlocked --> opened: open
   note left of opened
-    on [unlocked] -> [opened]
-    inc count & send email
+    on [unlocked] to [opened]
+    inc count +10 & send email
     ok
   end note
 ```
