@@ -4,72 +4,85 @@
 Mix.install([
   {:machinery, "~> 1.0.0"},
   {:gen_state_machine, "~> 3.0"},
-  {:states_language, "~> 0.2.3"},
   {:xstate, "~> 0.1.0"},
-  {:jason, "~> 1.4"}
+  {:jason, "~> 1.4"},
+  {:fsmx, "~> 0.4.0"},
+  {:kino_db, "~> 0.2.1"},
+  # {:exqlite, "~> 0.11.0"},
+  {:ecto_sqlite3, "~> 0.9.1"},
+  {:ecto_sql, "~> 3.9"}
 ])
 ```
 
 ## Introduction
 
-State machines or State Automata are designed to recognize patterns in general (cf [Wikipedia](https://en.wikipedia.org/wiki/Finite-state_machine)). The process takes a finite set of states, and describes the possible transitions, the change of state in response to some inputs.
+State machines or State Automata are designed to recognize patterns in general (cf [Wikipedia](https://en.wikipedia.org/wiki/Finite-state_machine)). A machine `M` is represented by a finite numbers of states and inputs, and by a transition_function `t` which takes a state, an input (eq event) and returns a state and some actions: $t: S\times I \to (A,S)$. The machine describes all possible transitions, the change of state in response to some inputs.
 
-Our machine `M` is represented as: `(states, inputs, transition_function, init_state, final_admissible_states)`:
+A transition is meant to Run To Completion. One interest with the State Machine pattern is to trigger side-effects (the action $A$  above) that can run before or after a transition. Side-effects are typicaly updating a database, trigger timers, or sending messages, typically an email. Actions on the database are meant to be atomic, executed within a transaction so that they can be rolled back.
 
-<!-- livebook:{"force_markdown":true} -->
+> There exits a pattern [sagas](http://www.cs.cornell.edu/andru/cs711/2002fa/reading/sagas.pdf) defined to manage Long Lived Transactions.  [Sage](https://github.com/Nebo15/sage) is an Elixir implementation. It allows you to secure  _distributed_ transactions. It transforms a LLT guarded by a succession of `with` clauses and error handling into an execution pipeline where you define a "compensation" for each transaction to enable secured rollbacks.
 
-```elixir
-M = [Q: {:opened, :unlocked, :locked, :trapped}, S: (:open, :close, lock, :unlock),t,:locked, Q]
-
-t: Q x S -> Q
-```
-
-where the transition function `t` is defined by a mapping $t(q_i, s_j) = q_k$. These actions have typically side-effects.
-
-This formalism can be interresting to use when your process graph is not only a sequential series of events, but has some cycles, branches or timeouts.
-
-Erlang has an in-build solution `:gen_statem`.
+The finite state machine formalism can be interresting to use when your process graph is not only a sequential series of events, but has some cycles, branches or timeouts. Erlang has an in-build solution `:gen_statem` and its Elixir version `GenStateMachine`.
 
 Some blogs and documentation:
 
-* [GenStateMachine timeouts](https://dockyard.com/blog/2020/01/31/state-timeouts-with-gen_statem)
+* [Sagas](http://www.cs.cornell.edu/andru/cs711/2002fa/reading/sagas.pdf) and [distributed transactions](https://medium.com/nebo-15/introducing-sage-a-sagas-pattern-implementation-in-elixir-3ad499f236f6)
+* [GenStateMachine](https://dockyard.com/blog/2020/01/31/state-timeouts-with-gen_statem)
 * [Struct implementation](https://blog.appsignal.com/2020/07/14/building-state-machines-in-elixir-with-ecto.html)
 * [Ecto and building state machines](https://blog.appsignal.com/2020/07/14/building-state-machines-in-elixir-with-ecto.html)
 * [about State Machines](https://www.freecodecamp.org/news/state-machines-basics-of-computer-science-d42855debc66/)
-* the libraries: [Xstate](https://hexdocs.pm/xstate/Xstate.html), [Machinery](), [GenStateMachine](https://hexdocs.pm/gen_state_machine/GenStateMachine.html), [:gen_statem](https://www.erlang.org/doc/man/gen_statem.html)
+* the libraries: [Machinery](https://github.com/joaomdmoura/machinery), [Fsmx](https://hexdocs.pm/fsmx/readme.html#installation), [GenStateMachine](https://hexdocs.pm/gen_state_machine/GenStateMachine.html), [:gen_statem](https://www.erlang.org/doc/man/gen_statem.html)
 * A [video](https://www.youtube.com/watch?v=4rNYAvsSkwk) among many.
 
 Below are presented:
 
-* a (simple) module based implementation of a state machine, the "door" example,
-* its implementation by librabries `Xstate` and `Machinery` and `gen_statem`,
-* a time based process with `GenStateMachine`, where you control when you logout an inactive user by using the "timout" action from `:gen_statem` [actions](https://www.erlang.org/doc/man/gen_statem.html#type-action),
-* an NFA with a regex built with `gen_statem`
+* a (simple) "struct" _event-based_ module implementation of a state machine, with the "door" example,
+* the "door" implementated with the libraries `Machinery` and `gen_statem` and `Fsmx`. The main difference is that you need code code every transitions with `gen_statem` whilst it relies on a map of transitions for the others.
+* the "door" with an `Ecto` based implementation with `Fsmx` using a local serverless `SQLite`. We use _atomic_ transaction that can be rooled-back.
+* a _time-event_ based process using `GenStateMachine` for the "inactive module" process, where you control when you logout an inactive user,
+* an NFA example with a regex, built with `gen_statem`.
 
 ## DFA: the Door model
 
-**DFA**: given a state and an input, there exists only one output or next state. For this reason it is said to be "deterministic". The words "input" and "event" are equivalent here.
+**DFA** or Deterministic Finite Automata: given a state and an input, there exists only one output or next state. For this reason it is said to be "deterministic". The words "input" and "event" are equivalent here.
 
-Let's take the door example. It is a simple _deterministic_ finite one. A door can open or closed, locked or unlocked. The map of our transitions is:
+Let's take the door example; it can open or locked or unlocked.
 
-<!-- livebook:{"force_markdown":true} -->
+```mermaid
+stateDiagram-v2
+direction LR
+  locked-->unlocked: unlock
+  unlocked-->opened: open
+  opened-->unlocked: close
+  unlocked-->locked: lock
+```
+
+The map of our transitions $t: S\times E\to S$ is:
+
+<!-- livebook:{"break_markdown":true} -->
 
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
-  %{
-   "locked"     => "unlocked",    #<-- :unlock
-    "unlocked"  => "locked",      #<-- :lock
-    "unlocked"  => "opened",      #<-- :open
-    "opened"    => "unlocked",    #<-- :close
-    "*"         => "trap"         #<-- :dead_end
-  }
+%{
+  {:locked, :unlock} => :unlocked,
+  {:unlocked, :lock} => :locked,
+  {:unlocked, :open} => :opened,
+  {:opened, :close} => :unlocked,
+  {"*", :any}        => :trapped         #<-- :dead_end
+}
 ```
 
-For example, when the state `:locked` receives the event `:unlock`, the state changes to `:unlocked`. Depending on your needs, you may consider that for any _other state_, the effect of the event `:unlock` is:
+<!-- livebook:{"break_markdown":true} -->
+
+<!-- Learn more at https://mermaid-js.github.io/mermaid -->
+
+<!-- livebook:{"break_markdown":true} -->
+
+Not all possible comibnations are declared above. For example, when the state `:locked` receives the event `:unlock`, the state changes to `:unlocked` but we don't know ofr the effect of `:close` on `:locked`. Depending on your needs, you may consider that for any _other state_, the effect of the event `:unlock` is:
 
 * whether the _identity_,
-* or a _trap state_ ❌ where you raise an error.
+* or a _trap state_ ❌ where you raise an error as a non-existing transition.
 
 You have several ways to represent this:
 
@@ -99,167 +112,96 @@ You have several ways to represent this:
 
 ## Struct based implementation
 
-We need to manage the state for the transitions. The machine will be a module and we will hold the state in a _struct_. As said before, the transition function `t` takes this struct (current state) and an event and returns the next state: $Q \times S \to Q$
+We will manage the state for the transitions within a _struct_. As said before, the transition function `t` takes this struct (current state) and an event and returns the next state plus possible an action: $t: S\times E \to (A,S)$. The transition function to an event looks like:
 
-<!-- livebook:{"force_markdown":true} -->
+<!-- livebook:{"break_markdown":true} -->
 
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
-   (%State{state: current}, event)  ->  %State{state: new_state}
+   handle_event: (%State{state: current}, event)  ->  %State{state: new_state}
 ```
 
-Thanks to pattern matching, Elixir makes it easy to code all of the allowed transitions. For simplicity, all the effects of inputs on the states that are not listed as admissible are considered as trapped, in other words will generate an error tuple_. Although simple, this pattern can be useful.
+<!-- livebook:{"break_markdown":true} -->
 
-A transition has typically side-effects. We can add anything useful to the struct, a name, a counter... that can be changed. For example, the struct holds a counter that is incremented by 1 each time the state goes to `:opened`. We also implement an async action triggered when the state leaves hte value `:locked`.
+Thanks to pattern matching, Elixir makes it easy to code all of the allowed transitions. For simplicity, all the effects of inputs on the states that are not listed as admissible are considered as trapped, in other words will generate an _error tuple_.
+
+The module below is just a bunch of functions and does not persist the state. It is just to demonstrate the pattern.
 
 ```elixir
-defmodule Door do
+defmodule SDoor do
   @moduledoc """
   Simple implementation of a struct and pattern matching (cf "source")
   """
   require Logger
-  defstruct [:name, count: 0, state: :locked]
+  defstruct state: :locked
 
   @doc """
-  Takes a %Door{} struct with a given state, and an event, and returns
+  Takes a %SDoor{} struct with a given state, and an event, and returns
   the struct with updated state.
-    iex> Door.transition_to(%Door{state: :unlocked}, :open)
-    {:ok, %Door{name: nil, count: 1, state: :opened}}
+    iex> SDoor.handle_event(%SDoor{state: :unlocked}, :open)
+    {:ok, %SDoor{state: :opened}}
+    iex> SDoor.handle_event(%SDoor{state: :locked}, :open)
+    {:error, :event_not_allowed}
   """
-  def transition_to(%Door{state: :locked} = door, :unlock) do
-    call_guard()
-    {:ok, %Door{door | state: :unlocked}}
+  def handle_event(%SDoor{state: :locked} = door, :unlock) do
+    {:ok, %SDoor{door | state: :unlocked}}
   end
 
-  def transition_to(%Door{state: :unlocked} = door, :open) do
-    {:ok, %Door{door | count: door.count + 1, state: :opened}}
+  def handle_event(%SDoor{state: :unlocked} = door, :open) do
+    {:ok, %SDoor{door | state: :opened}}
   end
 
-  def transition_to(%Door{state: :opened} = door, :close) do
-    {:ok, %Door{door | state: :unlocked}}
+  def handle_event(%SDoor{state: :opened} = door, :close) do
+    {:ok, %SDoor{door | state: :unlocked}}
   end
 
-  def transition_to(%Door{state: :unlocked} = door, :lock) do
-    {:ok, %Door{door | state: :locked}}
+  def handle_event(%SDoor{state: :unlocked} = door, :lock) do
+    {:ok, %SDoor{door | state: :locked}}
   end
 
   # all other combinations state/event are not permitted.
-  def transition_to(_, _), do: {:error, :transition_to_is_not_allowed}
-
-  @doc """
-  Simulate an async call
-    iex> Door.call_guard() |> Task.await()
-    :ok
-  """
-  def call_guard do
-    Task.async(fn ->
-      Process.sleep(100)
-      Logger.debug("warn the guards.....")
-    end)
-  end
+  def handle_event(_, _), do: {:error, :event_not_allowed}
 end
 ```
 
-We can test a sequence of events:
+We will test a pipeline of _events_ transitions: [unlock]->[open]->[lock]. The last one is meant to fail.
 
 ```elixir
-[:unlock, :close, :open, :open, :close, :open, :close, :lock, :unlock, :open]
-|> Enum.reduce(%Door{}, fn event, d ->
-  case Door.transition_to(d, event) do
-    {:ok, door} ->
-      IO.inspect(door.state)
-      %Door{d | count: door.count, state: door.state}
-
-    {:error, _} ->
-      d
-  end
-end)
+SDoor.handle_event(%SDoor{state: :locked}, :unlock)
+|> IO.inspect()
+|> elem(1)
+|> SDoor.handle_event(:open)
+|> IO.inspect()
+|> elem(1)
+|> SDoor.handle_event(:lock)
+|> IO.inspect()
 ```
 
-## Xstate package
+#### Machinery
 
-We follow the documentation of [Xstate](https://github.com/natserract/xstate).
+We can use the more robust package [Machinery](https://github.com/joaomdmoura/machinery); it is based on a struct that holds the state. An [article written](https://medium.com/@joaomdmoura/state-machine-in-elixir-with-machinery-8ee6f9def2da) by the author. Instead of evaluating an event on the state, you can use a `transitions` map:
 
-```elixir
-defmodule XDoor do
-  use Xstate.StateMachine
-  alias Xstate.StateMachine, as: X
-  require Logger
-
-  def puts(msg, inside) do
-    Logger.info("#{msg} in #{inside}")
-    {:ok, msg}
-  end
-
-  def async(msg) do
-    Logger.info(msg)
-    {:ok, msg}
-  end
-
-  def machine do
-    %X.Machine{
-      initial_state: {"unlocked", %{count: 0}},
-      mapping: %{
-        :lock => %X.Transitions{
-          target: "locked",
-          before: nil,
-          callback: fn _ -> puts(:after_transition, "locked") end
-        },
-        :unlock => %X.Transitions{
-          target: "unlocked",
-          before: fn -> puts("before__: ", "unlocked") end,
-          callback: fn context ->
-            fn _ -> %{context | instance: %{count: context.instance.count + 1}} end
-          end
-        },
-        :open => %X.Transitions{
-          target: "open",
-          before: nil,
-          callback: fn context -> Logger.debug(context.internal.count) end
-        },
-        :close => %X.Transitions{
-          target: "unlocked",
-          before: nil,
-          callback: fn _ -> async("warn the guard.....") end
-        }
-      },
-      modifiable_states: MapSet.new(["open"])
-    }
-  end
-
-  def new(external), do: machine() |> X.new(external)
-
-  def open(machine), do: X.transition(machine, :open)
-  def close(machine), do: X.transition(machine, :close)
-  def lock(machine), do: X.transition(machine, :lock)
-  def unlock(machine), do: X.transition(machine, :unlock)
-  def state(machine), do: X.get_states(machine)
-end
-```
+<!-- livebook:{"force_markdown":true} -->
 
 ```elixir
-machine = XDoor.new(%{count: 0})
-```
-
-```elixir
-XDoor.open(machine)
-machine = %{machine | external: %{count: machine.external.count + 1}}
-XDoor.close(machine)
-XDoor.lock(machine)
-XDoor.unlock(machine)
-XDoor.open(machine)
-machine = %{machine | external: %{count: machine.external.count + 1}}
-
-{
-  machine.external.count,
-  XDoor.state(machine)
+transitions: %{
+  "locked" => "unlocked",
+  "unlocked" => ["locked", "opened"],
+  "opened" => "unlocked"
 }
 ```
 
-## Machinery package
+You evaluate if a next possible state is possible given the current state with `Machinery.transition_to/3`:
 
-We can use the package [Machinery](https://github.com/joaomdmoura/machinery); it is based on a struct that holds the state, and on the declation of a `transitions` map. It exposes a function `Machinery.transition_to/3` that takes the state struct, its module name, and a possible state. It returns `{:ok, new_state_struct}` or `{:error, message}` when the transition is found in the transition map or not (our "trap" state).
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+iex> Machinery.transition_to(%MyModule{}, MyModule, "next_state")
+{:ok, new_state_struct}
+#or
+{:error, "Transition to this state isn't declared"}
+```
 
 > Note that with Machinery, you cannot consider identity actions because you would have multiple transitions for the same state.
 
@@ -269,10 +211,12 @@ Lastly, besides being declarative, you use strings as state identifiers.
 
 Below we display the same "deterministic" door process using the simple Machinery declarative style.
 
+A transition has typically side-effects. $S\times E\to (A,S)$ . We can add anything useful to the struct, a name, a counter... that can be changed. For example, the struct holds a counter that is incremented by 1 each time the state goes to `:opened`. We also implement an async action triggered when the state leaves the value `:locked`. The obvious problem with this simple code is that some action could run to completion whilst our transition doesn't. In particular if the action is run concurrently, ie async and you can't cancel it.
+
 ```elixir
 defmodule MachineryDoor do
   use Machinery,
-    field: :door,
+    # field: :door_state <-- you can alias the "state" here
     # The first state declared will be considered the initial state.
     states: ["locked", "opened", "unlocked"],
     transitions: %{
@@ -280,16 +224,18 @@ defmodule MachineryDoor do
       "unlocked" => ["locked", "opened"],
       "opened" => "unlocked"
     }
+end
 
+#### business logic module ####
+defmodule MDoor do
   require Logger
+  defstruct [:name, count: 0]
 
-  defstruct count: 0
-
-  def after_transition(%MachineryDoor{} = struct, "opened") do
+  def after_transition(%MDoor{} = struct, "opened") do
     Map.update!(struct, :count, &(&1 + 1))
   end
 
-  def after_transition(%MachineryDoor{} = struct, "unlocked") do
+  def after_transition(%MDoor{} = struct, "unlocked") do
     Task.async(&async_task/0) |> Task.await()
     struct
   end
@@ -298,38 +244,275 @@ defmodule MachineryDoor do
 end
 ```
 
-We can test it:
+We use `Machinery.transition_to/3` to declare the next state we want to reach. We will test a pipeline of _state_ transitions: [locked]->[unlocked]->[opened]->[locked]. The last one is meant to fail.
 
 ```elixir
-require Logger
+%MDoor{name: "kitchen"}
+|> Machinery.transition_to(MachineryDoor, "unlocked")
+|> IO.inspect()
+|> elem(1)
+|> Machinery.transition_to(MachineryDoor, "opened")
+|> IO.inspect()
+|> elem(1)
+|> Machinery.transition_to(MachineryDoor, "locked")
+```
 
-[
-  "unlocked",
-  "locked",
-  "opened",
-  "unlocked",
-  "opened",
-  "unlocked",
-  "locked",
-  "unlocked",
-  "opened"
-]
-|> Enum.reduce(%MachineryDoor{}, fn state, struct ->
-  case Machinery.transition_to(struct, MachineryDoor, state) do
-    {:ok, new_struct} ->
-      Logger.debug(new_struct)
-      new_struct
+## Ecto based example: Atomic side-effects with Fsmx
 
-    {:error, msg} ->
-      IO.puts("#{msg}")
-      struct
+We want the state (and other meaningfull data) to be persisted to a database. We will use `Ecto.Multi` to run in transactions side-effects, such as sending emails, notifications.
+
+The package `Fsmx` is convenient for this usage of running transactions with `Ecto`.
+
+> They _insist_ on the danger of [running side-effects](https://hexdocs.pm/fsmx/readme.html#a-note-on-side-effects).
+
+<!-- livebook:{"break_markdown":true} -->
+
+##### Set-up the SQLite database and `Ecto.Repo`
+
+With Postgres, you need to run a server and have disk access. With SQLite3, we can run a local serverless RDB.
+
+1. We run it _in memory_  with the `:memory` key. We set up the SQLite driver [Exqlite](https://hexdocs.pm/exqlite/0.11.8/readme.html) to **connect** to the instance. This will give us a `conn`.
+
+2. We then **create the table**.
+
+```elixir
+defmodule Door.Conn do
+  def start do
+    Exqlite.Sqlite3.open(":memory")
   end
+
+  def create_table(conn) do
+    Exqlite.Sqlite3.execute(
+      conn,
+      "CREATE TABLE IF NOT EXISTS doors (
+          id integer primary key, 
+          state string,
+          count integer,
+          inserted_at string,
+          updated_at string
+          )"
+    )
+  end
+
+  def reset_table(conn) do
+    Exqlite.Sqlite3.execute(conn, "DROP TABLE IF EXISTS doors")
+    create_table(conn)
+  end
+end
+
+{:ok, conn} = Door.Conn.start()
+Door.Conn.create_table(conn)
+```
+
+The block below is useful to reset the database when you re-run the code several times.
+
+```elixir
+# reset the database to erase the table
+Door.Conn.reset_table(conn)
+```
+
+* We define the `Repo`. We need an adapter [EctoSQLite3](https://hexdocs.pm/ecto_sqlite3/Ecto.Adapters.SQLite3.html#module-limitations-and-caveats) to convert `Ecto` routines into SQLite ones. When using the `Ecto` adapter, the code is database agnostic, independant from the database so we can change to say Postgres by changing the config and not the code.
+
+```elixir
+defmodule Door.Repo do
+  use Ecto.Repo, adapter: Ecto.Adapters.SQLite3, otp_app: :noop
+end
+```
+
+We **start** the repo to whom we **pass the database** (you normally start the repo by passing it as a child to the Application supervisor).
+
+```elixir
+opts = [database: ":memory", default_chunk_size: 100]
+
+case Door.Repo.start_link(opts) do
+  {:ok, pid} -> {:ok, pid}
+  {:error, {_, pid}} -> {:ok, pid}
+end
+```
+
+* Set-up of the `Ecto.Schema`
+
+```elixir
+defmodule EctoDoor do
+  use Ecto.Schema
+  require Logger
+
+  schema "doors" do
+    field(:state, :string, default: "locked")
+    field(:count, :integer, default: 0)
+    timestamps()
+  end
+
+  use Fsmx.Struct, fsm: EDoor
+end
+```
+
+* finally, the module that contains the business logic:
+
+```elixir
+#### business logic module ##########
+defmodule EDoor do
+  use Fsmx.Struct,
+    transitions: %{
+      "locked" => "unlocked",
+      "unlocked" => ["locked", "opened"],
+      "opened" => "unlocked"
+    }
+
+  require Logger
+
+  def before_transition(door, "locked", "unlocked") do
+    chgset = transition_changeset(door, "locked", "unlocked", %{count: door.count + 1})
+    notify("door is unlocked")
+    {:ok, chgset}
+  end
+
+  def before_transition(door, "unlocked", "opened") do
+    notify("door is open")
+    chgset = transition_changeset(door, "unlocked", "opened", %{count: door.count + 10})
+    {:ok, chgset}
+  end
+
+  # send a message/email etc..  when door enters the state "open"
+  def after_transition_multi(_door, _, "opened") do
+    notify("door is open from multi")
+    {:ok, nil}
+  end
+
+  def transition_changeset(%EctoDoor{} = door, _from, _to, params) do
+    Ecto.Changeset.cast(door, params, [:count, :inserted_at, :updated_at])
+  end
+
+  # we spawn a task to run async notifications, emails...
+  defp notify(msg), do: Task.async(fn -> send_email(msg) end) |> Task.await()
+  defp send_email(msg), do: Task.async(fn -> Logger.info("#{msg}________________") end)
+end
+```
+
+We want to perform the following actions on transitions:
+
+```mermaid
+stateDiagram-v2
+direction LR
+
+  locked --> unlocked: unlock
+  note right of locked
+    send email on:
+    [locked] -> [unlocked]
+    ok
+  end note
+  unlocked --> opened: open
+  note left of opened
+    on [unlocked] -> [opened]
+    inc count & send email
+    ok
+  end note
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+Since use schemas, we will use `Fsmx.transition_changeset` to build a changeset to persist to the database. If the transition is not succesfull, the changeset will not be valid.
+
+We will test a **non-atomic** pipeline of state transitions **[locked]->[unlocked]->[locked]->[unlocked]**. The last one is meant to fail. Note that the emails can be sent when the transition fails. We should get a count of 2 and 2 messages sent via the `before_transition` callback.
+
+```elixir
+init_door =
+  Ecto.Changeset.cast(%EctoDoor{state: "locked"}, %{}, [])
+  |> Door.Repo.insert_or_update!()
+
+Fsmx.transition_changeset(init_door, "unlocked")
+|> Door.Repo.update!()
+|> Fsmx.transition_changeset("locked")
+|> Door.Repo.update!()
+|> Fsmx.transition_changeset("unlocked")
+
+# |> Door.Repo.update!()
+```
+
+We check what is persisted:
+
+```elixir
+Door.Repo.all(EctoDoor) |> List.last()
+```
+
+We create an **atomic** transaction for the transition **[unlocked]->[opened]** with `Fsmx.transition_multi` and `Ecto.Multi`. The `before_transition` callback is triggered and we should get a count of 10. The `after_transiion_multi` callback should be triggered and we receive a message.
+
+```elixir
+init_door =
+  Ecto.Changeset.cast(%EctoDoor{state: "unlocked"}, %{}, [])
+  |> Door.Repo.insert!()
+
+# one transition
+Ecto.Multi.new()
+|> Fsmx.transition_multi(init_door, "t1", "opened")
+|> Door.Repo.transaction()
+```
+
+We check if it is persisted:
+
+```elixir
+Door.Repo.all(EctoDoor) |> List.last()
+```
+
+We now create an **atomic pipeline** for the same state transitions **[locked]->[unlocked]->[opened]**. We use `Ecto.Multi.merge` to chain. If the second transition fails, the first transition can still be completed, but the last email won't be sent.
+
+```elixir
+init_door =
+  Ecto.Changeset.cast(%EctoDoor{state: "locked"}, %{}, [])
+  |> Door.Repo.insert!()
+
+# two chained transitions
+Ecto.Multi.new()
+|> Fsmx.transition_multi(init_door, "t1", "unlocked")
+|> Ecto.Multi.merge(fn %{"t1" => unlocked} ->
+  Ecto.Multi.new()
+  |> Fsmx.transition_multi(unlocked, "t2", "opened")
 end)
+|> Door.Repo.transaction()
+```
+
+Let's check
+
+```elixir
+Door.Repo.all(EctoDoor) |> List.last()
+```
+
+#### Ecto based transitions vs "raw" transactions
+
+<!-- livebook:{"break_markdown":true} -->
+
+> Below is an example of  `ExqLite` transactions. You define a query in 2 or 3 steps: `prepare`, `bind` if inserting or updating data, and then run it with `step`.
+
+<!-- livebook:{"break_markdown":true} -->
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+# INSERT DATA
+{:ok, statement} = Exqlite.Sqlite3.prepare(conn, "insert into doors (state) values (?1)")
+Exqlite.Sqlite3.bind(conn, statement, ["unlocked"])
+Exqlite.Sqlite3.step(conn, statement)
+
+{:ok, statement2} = Exqlite.Sqlite3.prepare(conn, "select * from doors")
+Exqlite.Sqlite3.step(conn, statement2)
+
+# Run several times `.step` to see other results.
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+To be compared with `Ecto.Repo` which is database agnostic:
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+Door.Repo.insert(%EDoor{state: "unlocked"})
+Door.Repo.all(EDoor)
 ```
 
 ## Erlang's "gen_statem" module
 
-We will use the [:gen_statem](https://www.erlang.org/doc/man/gen_statem.html) module (from `Erlang`). It is a `GenServer` like behaviour so is designed for event-driven automatas..
+We will use the [:gen_statem](https://www.erlang.org/doc/man/gen_statem.html) module (from `Erlang`). It is more process orientated than data orientated. It is a `GenServer` like behaviour so is designed for event-driven automata..
 
 Two callback modes are supported:
 
@@ -362,21 +545,15 @@ handle_event({:call, from}, :event, :current_state, data)
 
 <!-- livebook:{"break_markdown":true} -->
 
-The return contains a list of so-called "actions":
+The return contains a list of so-called "[actions](https://www.erlang.org/doc/man/gen_statem.html#type-action)": these transition actions can be invoked by returning them from the callback". It is mandatory to reply.
 
 <!-- livebook:{"break_markdown":true} -->
 
 <!-- livebook:{"force_markdown":true} -->
 
 ```elixir
-{:next_state, :next_possible_state, data, [{:reply, from, {:ok, :next_possible_state, data}}]
+{:next_state, :next_possible_state, data, [{:reply, from, <your_reply>}]
 ```
-
-<!-- livebook:{"break_markdown":true} -->
-
-> Note that we can run side-effects, and add messages in the returned tuple. In our case, we count the number of times the door has been opened, and return the count.
-
-> Since we use `.call`, all actions must exit before the callback returns. If we run an `Task.async` (as a demo), it must run to completion so we can call it indirectly. This is normal since we want the operation to be atomic.
 
 ```elixir
 defmodule GSDoor do
@@ -416,6 +593,10 @@ defmodule GSDoor do
 end
 ```
 
+> Note that we can run side-effects, and add messages in the returned tuple. In our case, we count the number of times the door has been opened, and return the count.
+
+> With the synchronous `.call`, all actions must exit before the callback returns respecting the Run To Completion standard semantics of processing events. If we run an `Task.async` (as a demo), it must run to completion so we can call it indirectly. This is normal since we want the operation to be atomic.
+
 ```elixir
 {:ok, pid} = GSDoor.start()
 alias GenStateMachine, as: GSm
@@ -431,21 +612,41 @@ end)
 
 We want some pages to be accessible only to logged-in users. For safety, we also want to log them out after four minutes of inactivity. The UX designer asks to show a warning one minute before logging out to inform the user.
 
-This is a deterministic event-driven process where we have ot consider timers:
+This is a deterministic event-driven process where we have to consider timers and event-listeners.
 
 ```mermaid
     stateDiagram-v2
     direction LR
 
+    user_listener--> user_listener: key,mouse
+
     idle --> logged_out: 1_min_inactivity
-    logged_out --> logged_in: login
+    note right of idle 
+        on transition,
+        send push notification
+        _
+    end note
+   
+    logged_out --> logged_in: login 
     logged_in --> idle: 3_min_inactivity
     idle --> logged_in: activate
 ```
 
-We can use the previous pattern with a struct in a simple module. To run it continuously, we would need to run it in a `Task` and loop. One problem with this approach is that we cannot communicate with this process. We would need to use a Genserver.
+We use Erlangs' module `:gen_statem`, more precisely use the package [GenStateMachine](https://hexdocs.pm/gen_state_machine/GenStateMachine.html#module-example) to implement this since we can implement "timeouts" return actions from the event handler ([see event-timeouts](https://www.erlang.org/doc/man/gen_statem.html#type-event_timeout)).
 
-We can also use Erlangs' module `:gen_statem`, more precisely use the package [GenStateMachine](https://hexdocs.pm/gen_state_machine/GenStateMachine.html#module-example) to implement this since we can implement actions as "timeouts" ([see event-timeouts](https://www.erlang.org/doc/man/gen_statem.html#type-event_timeout)). There is no need to set-up your own timers or counters. You add to the callback response the optional action `{timeout, time(ms), :identifier}`. It will be pattern matched by a `handle_event(:timeout, :identifier, state, data)` callback. The `event-timeout` is choosen because any event that arrives cancels this time-out. When a user logs-in, we have a state transition on the event, and we let the callback return the event-timeout action. The timer goes on while no other event cancels it. It will end with a state transition, from "logged-in" to "idle". Any activity will cancel the timer. The "login" state can be hold as long as the session is not "idle". The transition to the "idle" state is monitored by the module and the messages can be captured in a `handle_event(:info?..)`. This callback will return another `event-timeout`, now targetting the `logged_out` state. We can easily insert push-notifications to alert the user.
+The [transition option](https://www.erlang.org/doc/man/gen_statem.html#type-transition_option) of [event timeout](https://www.erlang.org/doc/man/gen_statem.html#type-event_timeout): it starts a timer which on expiration generates a timeout, and can be cancelled by any incoming event.
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+{:next_state, :logged_in, data, 
+    [{:timeout, @timer1, :first_timeout}]
+}
+```
+
+There is no need to set-up your own timers or counters. You add to the callback response the optional action `{timeout, time(ms), :identifier}`. It will be pattern matched by a `handle_event(:timeout, :identifier, state, data)` callback. The `event-timeout` is choosen because any event that arrives cancels this time-out.
+
+When a user logs-in, we have a state transition on the event, and we let the callback return the event-timeout action. The timer goes on while no other event cancels it. It will end with a state transition, from "logged-in" to "idle". Any activity will cancel the timer. The "login" state can be hold as long as the session is not "idle". The transition to the "idle" state is monitored by the module and the messages can be captured in a `handle_event(:info?..)`. This callback will return another `event-timeout`, now targetting the `logged_out` state. We can easily insert push-notifications to alert the user.
 
 ```elixir
 defmodule Inactive do

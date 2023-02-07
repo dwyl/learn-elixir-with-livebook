@@ -26,19 +26,18 @@ Elixir/Erlang has two main modules, [Task](https://hexdocs.pm/elixir/1.14.3/Task
 
 Suppose you have to send millions of emails. It is a short-lived process which exits as soon as completed. You can run this code with a `Task` to leverage concurrency and use [Task.async](https://hexdocs.pm/elixir/1.14.3/Task.html#async/1).
 
-> Note that in case of failure, the error will bubble up (see "Supervisor" further down).
-
 <!-- livebook:{"break_markdown":true} -->
 
 We spawn 2 processes:
 
 ```elixir
 defmodule Email1 do
+  require Logger
   @emails ["a@com", "b@com"]
 
   def send_email(email) do
     Process.sleep(1_000)
-    IO.puts("#{email} received at: #{inspect(Time.utc_now())}")
+    Logger.info("#{email} received")
   end
 
   def run do
@@ -50,6 +49,10 @@ Time.utc_now() |> IO.inspect(label: :before)
 Email1.run()
 Time.utc_now() |> IO.inspect(label: :after)
 ```
+
+> Note that in case of failure, the error will bubble up (see "Supervisor" further down).
+
+<!-- livebook:{"break_markdown":true} -->
 
 ##### Get the response
 
@@ -74,10 +77,12 @@ We can run repeatedly `yield` whilst not `await`.
 
 ```elixir
 defmodule Continue do
+  require Logger
+
   def _yield(task, timeout: time) do
     case Task.yield(task, time) do
       nil ->
-        IO.puts("called again")
+        Logger.info("called again")
         _yield(task, timeout: time)
 
       result ->
@@ -104,11 +109,12 @@ The function will run 4 concurrent stream so the 12 emails will be processed in 
 
 ```elixir
 defmodule MyTasks do
+  require Logger
   @emails chars
 
   def send_email(email) do
     Process.sleep(500)
-    IO.puts("#{inspect(self())} processed #{email} at: #{inspect(Time.utc_now())}")
+    Logger.info("#{inspect(self())} processed #{email}")
   end
 
   def back_pressured do
@@ -140,11 +146,9 @@ The function `System.schedulers_online()` returns the number of available cores 
 
 ### Example of task: cron job
 
-We want to mimic a cron job with a Task. The task runs another task and is turned into a long-running process by calling itself.
+We want to mimic a cron job with a Task. The task runs another task and is turned into a long-running process by calling itself when the main process receives a delayed message.
 
-> Note that we should have used the supervised form [Task.Superivsor.async_nolink](https://hexdocs.pm/elixir/1.14.3/Task.Supervisor.html#async_nolink/3).
-
-Take a look at the [do not sleep](https://hexdocs.pm/elixir/Process.html#sleep/1) paragraph. This makes the loop more complicated since we need to continously receive messages as seen below as Tasks have no message handler. Another implementation is done further down with a genserver, who supports messages handling among other benefits.
+We used `Process.send_after` for [not to use sleep](https://hexdocs.pm/elixir/Process.html#sleep/1). You need to build a permanent message receiver. Another implementation is done further down with a genserver, who supports messages handling among other benefits.
 
 ```elixir
 defmodule Period do
@@ -167,7 +171,7 @@ defmodule Clean do
   def up, do: Logger.info("cleaned!")
 end
 
-# continous listener on the main process
+# continuous listener on the main process
 defmodule Listen do
   def loop do
     receive do
@@ -195,6 +199,8 @@ pid =
 Process.sleep(10_000)
 Process.exit(pid, :shutdown)
 ```
+
+> It is preferable to use the supervised form [Task.Superivsor.async_nolink](https://hexdocs.pm/elixir/1.14.3/Task.Supervisor.html#async_nolink/3). See further down.
 
 ## GenServer
 
@@ -350,6 +356,7 @@ The following usage of a genserver is an illustration; it is not appropriate as 
 ```elixir
 defmodule Periodic do
   use GenServer
+  require Logger
   @start Time.utc_now()
 
   defp time, do: Time.diff(Time.utc_now(), @start, :millisecond)
@@ -357,25 +364,25 @@ defmodule Periodic do
   def start_link(opts), do: GenServer.start(__MODULE__, opts)
 
   def init(args) do
-    IO.puts("#{inspect(time())}ms: First Init")
+    Logger.info("#{inspect(time())}ms: First Init")
     {:ok, args, {:continue, :run}}
   end
 
   def handle_continue(:run, [every: time, run: _f] = state) do
-    IO.puts("#{inspect(time())}ms: Continue")
+    Logger.info("#{inspect(time())}ms: Continue")
     Process.send_after(self(), :repeat, time)
     {:noreply, state}
   end
 
   def handle_info(:repeat, [every: time, run: myfun] = state) do
-    IO.puts("#{inspect(time())}ms: repeat")
+    Logger.info("#{inspect(time())}ms: repeat")
     Task.Supervisor.async_nolink(MyTaskSupervisor, fn -> apply(myfun, []) end)
     Process.send_after(self(), :repeat, time)
     {:noreply, state}
   end
 
   def handle_info({_, msg}, state) do
-    IO.puts("message from task: #{msg}")
+    Logger.info("message from task: #{msg}")
     {:noreply, state}
   end
 
@@ -664,10 +671,11 @@ Tasks can also be supervised. You declare a [Task.Supervisor](https://hexdocs.pm
 
 ```elixir
 defmodule Email2 do
+  require Logger
   @emails ["a@com", "b@com", "c@com"]
 
   def send_email("b@com"), do: raise("oh no!")
-  def send_email(email), do: IO.puts("#{email}")
+  def send_email(email), do: Logger.info("#{email}")
 
   def run do
     Enum.each(
@@ -746,6 +754,7 @@ Each time you run the module below, a new PID is generated.
 
 ```elixir
 defmodule CallByPid do
+  require Logger
   use GenServer
 
   def start_link(state: state) do
@@ -760,7 +769,7 @@ defmodule CallByPid do
   # callbacks
   @impl true
   def init(state) do
-    IO.puts("spawned #{inspect(self())} is instantiated with state: #{state}")
+    Logger.info("spawned #{inspect(self())} is instantiated with state: #{state}")
     {:ok, state}
   end
 
@@ -777,12 +786,13 @@ defmodule CallByPid do
   # message printer
   @impl true
   def handle_info({:msg, message}, state) do
-    IO.puts("spawned received: #{inspect(message)} from main")
+    Logger.info("spawned received: #{inspect(message)} from main")
     {:noreply, state}
   end
 end
 
-IO.inspect(self(), label: :main_process)
+require Logger
+Logger.info("main process pid: " <> "#{inspect(self())}")
 
 Kino.Process.render_seq_trace(fn ->
   # sending to main process the pid of the spawned process with state 1
@@ -797,7 +807,7 @@ We can check that our spawned process - the Genserver - is still alive and check
 ```elixir
 receive do
   {:spw1, pid} ->
-    IO.inspect(pid)
+    Logger.info(inspect(pid))
     Process.alive?(pid) |> Kino.inspect(label: "spawned process #{inspect(pid)} is still alive?")
     :sys.get_state(pid)
 end
@@ -813,6 +823,7 @@ We see that the "named" Genserver" can only be instantiated once per name, thus 
 
 ```elixir
 defmodule CallByAtom do
+  require Logger
   use GenServer
 
   def start_link(state: state) do
@@ -821,7 +832,7 @@ defmodule CallByAtom do
         {:ok, pid}
 
       {:error, {:already_started, pid}} ->
-        IO.puts(
+        Logger.info(
           "Genserver #{inspect(pid)} with name #{__MODULE__} and state #{state} was already started"
         )
 
@@ -833,7 +844,7 @@ defmodule CallByAtom do
   def get_state, do: GenServer.call(__MODULE__, :get_state)
 
   def init(state) do
-    IO.puts("#{inspect(self())} is instantiated with state: #{inspect(state)}")
+    Logger.info("#{inspect(self())} is instantiated with state: #{inspect(state)}")
     {:ok, state}
   end
 
@@ -881,6 +892,7 @@ Then you can identify the Genserver with any string or a number when you use the
 
 ```elixir
 defmodule CallByRegistry do
+  require Logger
   use GenServer
 
   defp via_tuple(name), do: {:via, Registry, {ARegistry, name}}
@@ -900,13 +912,13 @@ defmodule CallByRegistry do
 
   @impl true
   def init(state) do
-    IO.puts("#{inspect(self())} is instantiated with state: #{inspect(state)}")
+    Logger.info("#{inspect(self())} is instantiated with state: #{inspect(state)}")
     {:ok, state}
   end
 
   @impl true
   def handle_call(:ready, _from, state) do
-    IO.puts("#{inspect(state)} ready")
+    Logger.info("#{inspect(state)} ready")
     {:reply, :step_0, state}
   end
 end
@@ -974,7 +986,7 @@ We will use this HTTP call:
 ```elixir
 defmodule AsyncTask do
   def request do
-    Process.sleep(2_000)
+    Process.sleep(1_000)
 
     HTTPoison.get!("http://httpbin.org/json")
     |> Map.get(:body)
@@ -993,6 +1005,7 @@ The genserver below calls the `AsyncTask` module. It will receive 2 messages: th
 ```elixir
 defmodule FirstAsyncTaskGsRunner do
   use GenServer
+  require Logger
 
   def run(pid), do: GenServer.call(pid, :async)
 
@@ -1006,11 +1019,11 @@ defmodule FirstAsyncTaskGsRunner do
 
   # catch all
   def handle_info(msg, ref) do
-    IO.inspect(msg, label: :message)
+    Logger.debug(inspect(msg))
     {:noreply, ref}
   end
 
-  def terminate(reason, _s), do: IO.puts("Terminate Child with reason: #{inspect(reason)}")
+  def terminate(reason, _s), do: Logger.info("Terminate Child with reason: #{inspect(reason)}")
 end
 
 GenServer.start(FirstAsyncTaskGsRunner, {})
@@ -1035,6 +1048,7 @@ You can get a response back with [GenServer.reply/2](https://hexdocs.pm/elixir/1
 ```elixir
 defmodule AsyncTaskReplier do
   use GenServer
+  require Logger
 
   def start, do: GenServer.start(__MODULE__, nil, name: __MODULE__)
   def init(_), do: {:ok, nil}
@@ -1056,13 +1070,13 @@ defmodule AsyncTaskReplier do
   end
 
   def handle_info({:DOWN, _ref, :process, _pid, status}, s) do
-    IO.puts("received status: #{inspect(status)}")
+    Logger.debug("received status: #{inspect(status)}")
     {:noreply, s}
   end
 
   # the Genserver will call "terminate" if killed.
   def terminate(reason, _s) do
-    IO.puts("Terminate Main with reason: #{inspect(reason)}")
+    Logger.info("Terminate Main with reason: #{inspect(reason)}")
   end
 end
 
@@ -1077,6 +1091,7 @@ We use this time the "normal" monitoring mechanism of async tasks (when we don't
 ```elixir
 defmodule NoFailAsyncTaskRunner do
   use GenServer
+  require Logger
 
   def start, do: GenServer.start(__MODULE__, nil, name: __MODULE__)
 
@@ -1099,18 +1114,18 @@ defmodule NoFailAsyncTaskRunner do
 
   def handle_info({r, response}, ref) when ref == r do
     Process.demonitor(ref, [:flush])
-    IO.puts("response: #{inspect(response)}")
+    Logger.debug("response: #{inspect(response)}")
     {:noreply, nil}
   end
 
   def handle_info({:DOWN, _ref, :process, pid, status}, _rf) do
-    IO.puts("received status: #{inspect(status)} for the task #{inspect(pid)}}")
+    Logger.debug("received status: #{inspect(status)} for the task #{inspect(pid)}}")
     {:noreply, nil}
   end
 
   # the Genserver will call "terminate" if killed.
   def terminate(reason, _s) do
-    IO.puts("Terminate Main with reason: #{inspect(reason)}")
+    Logger.info("Terminate Main with reason: #{inspect(reason)}")
   end
 end
 ```
@@ -1153,6 +1168,7 @@ Set-up another genserver below to run again the previous `AsyncTask` but we make
 ```elixir
 defmodule AsyncTaskRunner do
   use GenServer
+  require Logger
 
   def start_link() do
     GenServer.start_link(__MODULE__, {}, name: __MODULE__)
@@ -1182,18 +1198,18 @@ defmodule AsyncTaskRunner do
   end
 
   def handle_info({r, response}, ref) when ref == r do
-    IO.puts("response: #{inspect(response)}")
+    Logger.debug("response: #{inspect(response)}")
     {:noreply, ref}
   end
 
   def handle_info({:DOWN, _ref, :process, _pid, status}, s) do
-    IO.puts("received status: #{inspect(status)}")
+    Logger.debug("received status: #{inspect(status)}")
     {:noreply, s}
   end
 
   # the Genserver will call "terminate" if killed.
   def terminate(reason, _s) do
-    IO.puts("Terminate Child with reason: #{inspect(reason)}")
+    Logger.info("Terminate Child with reason: #{inspect(reason)}")
   end
 end
 ```
