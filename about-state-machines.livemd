@@ -191,7 +191,7 @@ defmodule ADoor do
 end
 ```
 
-And use it to hold the state struct:
+We then use the `Agent` to manage the state struct in a function `handle_event` that pattern matches on every possible combination `current_state x event -> next_state`. This simple pattern builds a simple state machine.
 
 ```elixir
 defmodule AgentDoor do
