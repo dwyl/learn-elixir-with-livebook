@@ -113,7 +113,7 @@ You have several ways to represent this:
 
 ## Struct based implementation
 
-We will manage the state for the transitions within a _struct_. As said before, the transition function `t` takes this struct (current state) and an event and returns the next state plus possible an action: $t: S\times E \to (A,S)$. The transition function to an event looks like:
+As said before, the transition function `t` takes this struct (current state) and an event and returns the next state plus possible an action: $t: S\times E \to (A,S)$. We will code the following function:
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -127,7 +127,7 @@ We will manage the state for the transitions within a _struct_. As said before, 
 
 Thanks to pattern matching, Elixir makes it easy to code all of the allowed transitions. For simplicity, all the effects of inputs on the states that are not listed as admissible are considered as trapped, in other words will generate an _error tuple_.
 
-The module below is just a bunch of functions and does not persist the state. It is just to demonstrate the pattern.
+The module below is just a bunch of functions and does _not persist the state_. This means it is usable only to test if a given sequence of events is allowed.
 
 ```elixir
 defmodule SDoor do
@@ -166,17 +166,84 @@ defmodule SDoor do
 end
 ```
 
-We will test a pipeline of _events_ transitions: **[unlock]->[open]->[lock]**. The last one is meant to fail.
+We can only test the validity of a sequence  of _events_ transitions: **[unlock]->[open]->[lock]**. The last one is meant to fail.
 
 ```elixir
-SDoor.handle_event(%SDoor{state: :locked}, :unlock)
-|> IO.inspect()
+%SDoor{}
+|> SDoor.handle_event(:unlock)
 |> elem(1)
 |> SDoor.handle_event(:open)
-|> IO.inspect()
 |> elem(1)
 |> SDoor.handle_event(:lock)
-|> IO.inspect()
+|> dbg()
+```
+
+If we want to manage state, we can introduce an `Agent`:
+
+```elixir
+defmodule ADoor do
+  use Agent
+  require Logger
+
+  def start(init), do: Agent.start(fn -> init end)
+  def state(pid), do: Agent.get(pid, & &1)
+  def set(pid, state), do: Agent.update(pid, fn _ -> state end)
+end
+```
+
+And use it to hold the state struct:
+
+```elixir
+defmodule AgentDoor do
+  defstruct state: :locked
+
+  def start, do: ADoor.start(%__MODULE__{})
+  def start(init), do: ADoor.start(%__MODULE__{state: init})
+
+  def state(pid), do: ADoor.state(pid)
+  def set(pid, state), do: ADoor.set(pid, %__MODULE__{state: state})
+
+  def handle_event(%__MODULE__{state: :locked}, pid, :unlock) do
+    set(pid, :unlocked)
+    {:ok, state(pid)}
+  end
+
+  def handle_event(%__MODULE__{state: :unlocked}, pid, :open) do
+    set(pid, :opened)
+    {:ok, state(pid)}
+  end
+
+  def handle_event(%__MODULE__{state: :opened}, pid, :close) do
+    set(pid, :unlocked)
+    {:ok, state(pid)}
+  end
+
+  def handle_event(%__MODULE__{state: :unlocked}, pid, :lock) do
+    set(pid, :locked)
+    {:ok, state(pid)}
+  end
+
+  def handle_event(_, _, _), do: {:error, :event_not_allowed}
+end
+```
+
+We can pass a sequence of events (the last transition is meant ot fail) and retrieve the state:
+
+```elixir
+{:ok, pid} = AgentDoor.start()
+
+result =
+  AgentDoor.state(pid)
+  |> AgentDoor.handle_event(pid, :unlock)
+  |> elem(1)
+  |> AgentDoor.handle_event(pid, :open)
+  |> elem(1)
+  |> AgentDoor.handle_event(pid, :lock)
+
+{
+  result,
+  AgentDoor.state(pid)
+}
 ```
 
 #### Machinery
@@ -250,12 +317,11 @@ We use `Machinery.transition_to/3` to declare the next state we want to reach. W
 ```elixir
 %MDoor{name: "kitchen"}
 |> Machinery.transition_to(MachineryDoor, "unlocked")
-|> IO.inspect()
 |> elem(1)
 |> Machinery.transition_to(MachineryDoor, "opened")
-|> IO.inspect()
 |> elem(1)
 |> Machinery.transition_to(MachineryDoor, "locked")
+|> dbg()
 ```
 
 ## Ecto based example: Atomic side-effects with Fsmx
@@ -426,8 +492,8 @@ Fsmx.transition_changeset(init_door, "unlocked")
 |> Fsmx.transition_changeset("locked")
 |> Door.Repo.update!()
 |> Fsmx.transition_changeset("unlocked")
-
-# |> Door.Repo.update!()
+|> Door.Repo.update!()
+|> dbg()
 ```
 
 We check what is persisted:
