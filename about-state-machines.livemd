@@ -8,7 +8,6 @@ Mix.install([
   {:jason, "~> 1.4"},
   {:fsmx, "~> 0.4.0"},
   {:kino_db, "~> 0.2.1"},
-  # {:exqlite, "~> 0.11.0"},
   {:ecto_sqlite3, "~> 0.9.1"},
   {:ecto_sql, "~> 3.9"},
   {:kino_kroki, "~> 0.1"}
