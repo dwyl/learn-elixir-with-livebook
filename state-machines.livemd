@@ -1,4 +1,4 @@
-# A few things on Finite Automata with Elixir/Erlang
+# About Finite Automata with Elixir/Erlang
 
 ```elixir
 Mix.install([
@@ -37,8 +37,8 @@ Some blogs and documentation:
 Below are presented:
 
 * a (simple) "struct" _event-based_ module implementation of a state machine, with the "door" example,
-* the "door" implementated with the libraries `Machinery` and `gen_statem` and `Fsmx`. The main difference is that you need code code every transitions with `gen_statem` whilst it relies on a map of transitions for the others.
-* the "door" with an `Ecto` based implementation with `Fsmx` using a local serverless `SQLite`. We use _atomic_ transaction that can be rooled-back.
+* the "door" implementated with the libraries `Machinery` and `gen_statem` and `Fsmx`. The main difference is that you need to code every transitions with `gen_statem` whilst it relies on a map of transitions for the others.
+* the "door" with an `Ecto` based implementation with `Fsmx` using a local serverless `SQLite` session. We use an _atomic_ transaction that can be rolled-back.
 * a _time-event_ based process using `GenStateMachine` for the "inactive module" process, where you control when you logout an inactive user,
 * an NFA example with a regex, built with `gen_statem`.
 
@@ -521,6 +521,8 @@ Door.Repo.all(EctoDoor) |> List.last()
 ```
 
 We now create an **atomic pipeline** for the same state transitions **[locked]->[unlocked]->[opened]**. We use `Ecto.Multi.merge` to chain. If the second transition fails, the first transition can still be completed, but the last email won't be sent.
+
+> we would normally start a job to send a mail (with [Oban](https://hexdocs.pm/oban/Oban.html) or [EctoJob](https://hexdocs.pm/ecto_job/readme.html)) rather than sending it with a transaction.
 
 ```elixir
 init_door =
