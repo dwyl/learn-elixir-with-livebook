@@ -9,6 +9,8 @@
 4. [Streaming files](#stream-with-files)
 
 
+<hr />
+
 ## Elixir initiation Livebook
 
 You have 3 ways to enjoy this Livebook
@@ -31,6 +33,7 @@ and in another terminal you launch the browser (you will need to authenticate wi
 open http://localhost:8080/import?url=https://github.com/dwyl/learn-elixir-with-livebook/blob/main/learn-elixir-on-livebook.livemd
 ```
 
+<hr />
 
 ## Tasks Genservers and Supervisors
 
@@ -46,6 +49,7 @@ Run this Livebok:
 
 [![Run in Livebook](https://livebook.dev/badge/v1/gray.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fdwyl%2Flearn-elixir-with-livebook%2Fblob%2Fmain%2Fstate-machines.livemd)
 
+<hr />
 
 ## Stream with files:
 
