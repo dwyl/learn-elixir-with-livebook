@@ -13,7 +13,7 @@
 
 ## Elixir initiation Livebook
 
-You have 3 ways to enjoy this Livebook
+You have 2 ways to run a Livebook
 
 - If you have `Livebook` already installed, this is the best experience as you will use a more powerful computer (yours 🥳). Just click on the button below (or fork and run it):
 
