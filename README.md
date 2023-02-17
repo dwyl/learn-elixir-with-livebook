@@ -6,6 +6,8 @@
 
 3. [Finite State machines with Elixir Erlang](#finite-state-machines-with-elixir-erlang)
 
+4. [Streaming files](#stream-with-files)
+
 
 ## Elixir initiation Livebook
 
@@ -41,5 +43,10 @@ Run this Livebook:
 ## Finite State machines with Elixir Erlang
 
 Run this Livebok:
+
+[![Run in Livebook](https://livebook.dev/badge/v1/gray.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fdwyl%2Flearn-elixir-with-livebook%2Fblob%2Fmain%2Fstream-files.livemd)
+
+
+## Stream with files:
 
 [![Run in Livebook](https://livebook.dev/badge/v1/gray.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fdwyl%2Flearn-elixir-with-livebook%2Fblob%2Fmain%2Fstate-machines.livemd)
