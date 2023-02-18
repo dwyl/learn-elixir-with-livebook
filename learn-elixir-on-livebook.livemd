@@ -1669,11 +1669,12 @@ This represents the maximum number of VM processes that can be executing at the 
 :erlang.system_info(:schedulers_online)
 ```
 
-Now, consider the following module that computes the factorial of a given number. It computes the factorial in 3 differents ways:
+Now, consider the following module that computes the factorial of a given number. It computes the factorial in 4 differents ways:
 
 * via recursion, `Factorial.facto`,
 * via reduction, `Factorial.calc_product`,
-* and via concurrency, with `Factorial.spawn` and `Factorial.stream`
+* via concurrency, with `Factorial.spawn`
+* via "lazy" evaluation, `Factorial.stream`
 
 We added a helper function at the end for the rendering.
 
@@ -1682,14 +1683,12 @@ We added a helper function at the end for the rendering.
   \rm{factorial}(n) = n \cdot \rm{factorial}(n-1)
   $$
 
-* the `calc_product` works by **reduction**: sending the function `fn x, acc -> x * acc` to the list, and the result is accumulated in the `acc` variable.
+* the `calc_product` works by **reduction**: it sends the function `fn x, acc -> x * acc` to the list, and the result is accumulated in the `acc` variable.
 
 * the concurrent version will calculate concurrently "chunked" subproducts. Given a number $n$, we generate a list $[1,\dots, n]$  and group them by say 4: we get a list of sublists of 4 consecutive numbers. Then we apply an `Enum.map` function to this modified list. It sends a spawned version of a function to compute the  subproduct $n \times n+1 \times n+2 \times n+3$. This function is the reduction `calc_product` that sends back to the sender a subproduct. This is the return of the spawn. Since we ran `Enum.map`, these responses will by collected in a list. It is then sufficient to reduce this new list by again using `calc_product`.
 
-We have 2 concurrent versions:
-
-* one with `spawn` that uses the message passing `receive do` and `send`,
-* one that uses the [Stream](https://hexdocs.pm/elixir/1.14.3/Stream.html#content) module. This generates concurrency and is designed ofr handling data.
+The concurrent version with `spawn` uses the message passing `receive do` and `send`.
+The [lazy](https://elixir-lang.org/getting-started/enumerables-and-streams.html#streams) one uses the [Stream](https://hexdocs.pm/elixir/1.14.3/Stream.html#content) module. It is designed for handling data when working with large, possibly _infinite_, collections.
 
 ```elixir
 chunk = 4
@@ -1743,10 +1742,10 @@ defmodule Factorial do
   def facto(0), do: 1
   def facto(n), do: n * facto(n - 1)
 
-  # concurrent with Stream module ##########################
+  # lazy evaluation with Stream module ##########################
 
   @doc """
-  Concurrenct with Stream
+  Lazy with Stream
     iex> Factorial.stream(4)
     24
   """
@@ -1890,7 +1889,7 @@ end)
 
 #### Using the `Stream` module
 
-This concurrent version `Factorial.stream/1` uses the [Stream](https://hexdocs.pm/elixir/1.14.3/Stream.html#content) module. This allows lazy evaluation. Lazily means that it doesn't returns an immediately usable response but rather a function that returns a response; the returned function will only be run once it is called. In our case, these functions are executed when we further apply a reduction on this list: we there once again run a reduction to accumulate the product but on the list of subproducts. This eventually calculates the grand product, the factorial.
+This lazy version `Factorial.stream/1` uses the [Stream](https://hexdocs.pm/elixir/1.14.3/Stream.html#content) module. Lazy means that it doesn't returns an immediately usable response but rather a function that returns a response; the returned function will only be run once it is called by the `Enum` module. In our case, these functions are executed when we further apply a reduction on this list: we there once again run a reduction to accumulate the product but on the list of subproducts. This eventually calculates the grand product, the factorial.
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -1908,7 +1907,7 @@ end
 
 #### A word about performance
 
-Performance will largely depend upon your machine, in particular the number of cores for parallelisation. The concurrent `stream` will be the most performant method for big numbers. It runs concurrently (and parallel when possible) and has no overhead when compared to `spawn`. When the number to evaluate is small, then the simple recursion function will be the most performant (see the benchmark tests further).
+Performance will largely depend upon your machine, in particular the number of cores for parallelisation. The lazy `stream` will be the most performant method for big numbers. It has no overhead when compared to `spawn`. When the number to evaluate is small, then the simple recursion function will be the most performant (see the benchmark tests further).
 
 When you are using a single core machine like the one used here on **Fly.io**, the results might be different as there is no chance to run computations in parallel.
 
