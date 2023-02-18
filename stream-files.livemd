@@ -5,6 +5,7 @@ Mix.install([
   {:flow, "~> 1.2"},
   {:unzip, "~> 0.8.0"},
   {:csv, "~> 3.0"},
+  {:nimble_csv, "~> 1.2"},
   {:httpoison, "~> 2.0"},
   {:explorer, "~> 0.5"},
   {:finch, "~> 0.14"},
@@ -20,9 +21,10 @@ Mix.install([
 
 These notes are basics for handling CSV datasets that are rather big, but not about Big Data! We want to handle data in CSV format, for example to seed a database. We use the [Stream](https://hexdocs.pm/elixir/1.14.3/Stream.html) module to limit memory usage when the size of the data is big. We don't handle retries in case of connections errors nor [206-"Partial Content"](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/206) nor [Range](https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests) requests.
 
-[Reading](https://mkaszubowski.com/2021/02/16/ecto-repo-stream-data-processing.html)
+Reading: [here](https://mkaszubowski.com/2021/02/16/ecto-repo-stream-data-processing.html) and 
+[there](https://www.poeticoding.com/processing-large-csv-files-with-elixir-streams/)
 
-> This is not about parallelism since we are dealing of IO-bound tasks here. It is about "lazy" evaluation in constrast to "eager" evaluation. If you want parallelism,  multiple cores, then `GenStage` and `Flow` can help.
+This is not about parallelism since we are dealing of IO-bound tasks here. It is about "lazy" evaluation in constrast to "eager" evaluation. If you want parallelism,  multiple cores, then `GenStage` and `Flow` can help, as displayed at the end. The advantage of CSV files is the compatiblity with databases: most of them have native tools to insert into, or convert tables to CSV format. CSV files can also be parsed into DataFrames; any example is given with `Explorer` at the end.
 
 The data may be accessible from several sources:
 
@@ -30,9 +32,9 @@ The data may be accessible from several sources:
 2. the CSV is accessible from an endpoint,
 3. the CSV is serialized in a _database_.
 
-> The paragarph [Higher Level Operations](https://hexdocs.pm/ex_aws_s3/ExAws.S3.html#module-higher-level-operations) explains how to deal (upload, download) with large files with [ExAws.S3](https://hexdocs.pm/ex_aws_s3/ExAws.S3.html).
+> The paragraph [Higher Level Operations](https://hexdocs.pm/ex_aws_s3/ExAws.S3.html#module-higher-level-operations) explains how to deal (upload, download) with large files with [ExAws.S3](https://hexdocs.pm/ex_aws_s3/ExAws.S3.html).
 
-If the data is zipped, we may have an archive file, with several files. Therefor, we firstly spool the zip into our local disk and then can work with it using _streams_: unzip, transform, decode the data into the needed form, a CSV file, an in-memory list.
+If the data is zipped, we may have an archive file, with several files. Therefor, we firstly spool the zip into our local disk and then can work with it using _streams_: unzip, transform, decode the data into the needed form, a CSV file, an in-memory list. We will use [Unzip](https://hexdocs.pm/unzip/readme.html) and [CSV](https://hexdocs.pm/csv/readme.html) to decode streams.
 
 ```mermaid
 flowchart LR
@@ -147,6 +149,8 @@ unzipped_films = "https://perso.telecom-paristech.fr/eagan/class/igr204/data/fil
 ```
 
 ## Download CSV datasets
+
+We will use the package [Unzip](https://hexdocs.pm/unzip/readme.html) to unzip files, and the package [CSV](https://hexdocs.pm/csv/readme.html) that allows you to encode/decode streams of data.
 
 #### Endpoint serving a zipped file
 
@@ -532,4 +536,72 @@ File.stat!("save-airport.csv").size
 ```elixir
 Exqlite.Sqlite3.execute(conn, "DROP TABLE IF EXISTS csv")
 Exqlite.Sqlite3.close(conn)
+```
+
+## Aggregation: concurrency with Flow
+
+Streams do not bring concureny, only lazy evaluation. We will use the package [Flow](https://hexdocs.pm/flow/Flow.html) to run code concurrently. We also use the package [NimbleCSV](https://hexdocs.pm/nimble_csv/NimbleCSV.html) to decode line by line.
+
+The data here is small and bounded (as opposed to "unbounded", a continuous flow of data), so the davantage of using `Flow` is not clear. Nevertheless, you can compose aggregations when you introduce [partitions](https://hexdocs.pm/flow/Flow.html#module-partitioning) as showcased here.
+
+```elixir
+defmodule UseFlow do
+  alias NimbleCSV.RFC4180, as: CSV2
+
+  def airports do
+    File.stream!("airports-f.csv")
+    |> Flow.from_enumerable()
+    |> Flow.map(fn row ->
+      [row] = CSV2.parse_string(row, skip_headers: false)
+
+      %{
+        id: Enum.at(row, 0),
+        type: Enum.at(row, 2),
+        name: Enum.at(row, 3),
+        country: Enum.at(row, 5)
+      }
+    end)
+    |> Flow.reject(&(&1.type == "closed"))
+    |> Flow.partition(key: {:key, :country})
+    |> Flow.reduce(fn -> %{} end, fn item, acc ->
+      Map.update(acc, item.country, 1, &(&1 + 1))
+    end)
+    |> Flow.take_sort(10, fn {_, a}, {_, b} -> a > b end)
+    |> Enum.to_list()
+  end
+end
+```
+
+```elixir
+:timer.tc(fn -> UseFlow.airports() end)
+```
+
+## Aggregation: Explorer.DataFrame
+
+Since the data can be persented as a DataFrame, a two entry tabular dataset, we can use the library [Explorer.DataFrame](https://hexdocs.pm/explorer/Explorer.DataFrame.html).
+
+The library has a nice introduction Livebook:
+
+[![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fhexdocs.pm%2Fexplorer%2Fexploring_explorer.livemd)
+
+```elixir
+require Explorer.DataFrame, as: DF
+
+df = DF.from_csv!("airports-f.csv")
+
+DF.table(df)
+```
+
+```elixir
+DF.group_by(df, ["iso_country"])
+|> DF.summarise(count: count(iso_country))
+|> DF.table()
+```
+
+```elixir
+:timer.tc(fn ->
+  DF.from_csv!("airports-f.csv")
+  |> DF.group_by(["iso_country"])
+  |> DF.summarise(count: count(iso_country))
+end)
 ```
