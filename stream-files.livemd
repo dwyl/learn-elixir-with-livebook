@@ -269,18 +269,18 @@ HTTPFinchStream.download(unzipped_films)
 You can transform the dataset into a `DataFrame`:
 
 ```elixir
-Explorer.DataFrame.from_csv!("airports-10.csv")
+Explorer.DataFrame.from_csv!("airports-f.csv")
 ```
 
 ## Database setup: Ecto-SQLite
 
 We want to be able to stream our CSV file into a database, and also back-up our database into a CSV file. We setup the _serverless_ database SQLite for ease.
 
-> If we further want to use a remote S3 bucket, one may consider [Litestream](https://github.com/benbjohnson/litestream). See also this [post](https://silbernagel.dev/posts/distributed-sqlite-with-elixir): "Litestream allows us to backup our SQLite database to any S3 compatible storage after every transaction. It will also restore from that backup. Meaning that anytime we scale our app on Fly, we can restore the latest version of the database."
+> If we further want to use a remote S3 bucket, one may consider [Litestream](https://github.com/benbjohnson/litestream). See also this [post](https://silbernagel.dev/posts/distributed-sqlite-with-elixir): "Litestream allows us to backup our SQLite database to any S3 compatible storage after every transaction. It will also restore from that backup, meaning that we can restore the latest version of the database."
 
 <!-- livebook:{"break_markdown":true} -->
 
-We open a connection to a SQLite database and create a table to store each line of the CSV file. We use these headers to build a SQLite table. Each field is of type "string". We keep the file in memory with `":memory:"`.
+We open a connection to a SQLite database and create a table to store each line of the CSV file. We use these headers to build a SQLite table. Each field is of type "string".
 
 <!-- livebook:{"break_markdown":true} -->
 
