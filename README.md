@@ -8,7 +8,7 @@
 
 4. [Streaming files](#stream-with-files)
 
-5. [SurrealDB with Elixir](#surrealdb-wiwth-elixir)
+5. [SurrealDB with Elixir](#surrealdb-with-elixir)
 
 
 <hr />
@@ -56,6 +56,8 @@ Run this Livebok:
 ## Stream with files:
 
 [![Run in Livebook](https://livebook.dev/badge/v1/gray.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fdwyl%2Flearn-elixir-with-livebook%2Fblob%2Fmain%2Fstream-files.livemd)
+
+<hr/>
 
 ## SurrealDB with Elixir
 
