@@ -8,7 +8,7 @@
 
 4. [Streaming files](#stream-with-files)
 
-5. [SurrealDB with Elixir](#surrealdb-wiwth-elixir]
+5. [SurrealDB with Elixir](#surrealdb-wiwth-elixir)
 
 
 <hr />
