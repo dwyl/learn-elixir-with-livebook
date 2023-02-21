@@ -10,7 +10,7 @@ Mix.install([
 
 When an application runs on embedded devices, with the model "off-line first", you want to use your embedded (local) database first. When the user has access to the internet, you can sync with a remote database. One can use SQLite, a single file database, but it may be hard to synchronise with a backend. Here comes SurrealDB into play. It is a lightweight cloud-native database that claims to synchronise easily to a backend.
 
-SurrealDB is essentially a key/value ACID-compliant database. It can run in memory or with local persistence,  or with a remote connection. Redis is this kind of in-memory database mainly used for caching, for PubSub and streams (queue-like). SurrealDB is different as it offers a DSL very close to SQL and allows you to write Javascript functions.
+SurrealDB is essentially a key/value ACID-compliant database. It can run in memory or with local persistence,  or with a remote connection. Redis is this kind of in-memory database mainly used for caching, for PubSub and streams (queue-like). SurrealDB is different; you can run it from the backend or in the browser. It offers a DSL very close to SQL and allows you to write Javascript functions.
 
 By default, it is schemaless;  you can insert any key/value. When you want more control, you can turn a table into a schemafull table. structure is fixed and you want more control, you can turn a table into a _schemafull_ table.
 
