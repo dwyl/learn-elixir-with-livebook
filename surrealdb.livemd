@@ -8,26 +8,25 @@ Mix.install([
 
 ## A word on SurrealDB
 
-SQLite is a great lightweight serverless and transactional (ACID compliant) Relational Database. It is designed for small databases and runs a single file. Therefor it is suitable for running on embedded devices. With the model of "off-line first", you will always use the local database (SQLite), and when the user has internet access, you sync the databases.
-However, it may be difficult to synchronize with a backend: how to perform bidirectional data synchronisation and when the sync process should take place.
+When an application is running on embedded devices, with the model "off-line first", you want to use your embedded (local) database first, and when the user has internet access, you can sync with a remote database. One can use SQLite, a single file database but it may be difficult to synchronise with a backend. This is where SurrealDB comes into play. It is lightweight cloud native database that claims to synchronise easily to a backend.
 
-This seems where SurrealDB comes into play. It is a cloud native database that claims to synchronize to a backend. !! This needs to be demsontrated !!
+SurrealDB is essentially a key/value ACID compliant database. It can be run in-memory or with local persistance or with a remote connection. Redis is this kind of in-memory databasen mainly used for caching, for PubSub and for streams (queue like). SurrealDB is however different as it offers a DSL very close to SQL and allows to write Javascript functions. By default, it is _schemaless_ so you can insert any key/value. If the data structure is fixed and you want more control, you can turn a table into a _schemafull_ table.
+
+If you run locally, you need to start a server. It can also be run "serverless", meaning that you reach a service in the cloud. By default, it points to <https://cloud.surrealdb.com>. The server provides a REST api and a unique endpoint at "/sql".
+
+All you do is sending POST requests to the endpoint with the query in the body.
+
+Websockets aren't documented [at the moment](https://surrealdb.com/docs/integration/websockets).
 
 > [An example](https://developer.android.com/topic/libraries/architecture/workmanager) of the technology used with Android.
 
-SurrealDB is essentially a lightweight key/value ACID compliant database. By default, it is **schemaless** so you can insert any key/value. Every record is identified by the table it is stored in. Once we are fixed with our data structure, we can turn a table into a schemafull table to get more control on insertions.
-
-If you run locallly, you need to start a server (like Postgres or Redis). It can also be run "serverless", meaning that you reach a service in the cloud. The server provides a REST api and a unique endpoint at "/sql".
-
 It can run the database in-memory. This configuration is used here.
-
-SurrealDB has its own SQL like DSL. You can pass "SurQL" queries to the "/sql" endpoint. There is also a REST api but we won't use it here. The Elixir `SurrealEx` package offers some CRUD routines. It is however very easy to write directly SurQL queries. This form will be used here.
 
 Websockets aren't documented [at the moment](https://surrealdb.com/docs/integration/websockets). This would make a lot of sense combined with events.
 
 ## Start a local SurrealDB server
 
-Once Docker is launched, you can start a SurrealDB session running the database in-memory with the following credentials: "user", "pass", "location-of-the-database":
+You can run a Docker image to start a SurrealDB server. It is setup here to run in-memory with the following credentials: "user", "pass", "location-of-the-database":
 
 ```bash
 docker run --rm -p 8000:8000 surrealdb/surrealdb:latest start --log debug --user root --pass root memory
