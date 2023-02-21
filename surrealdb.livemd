@@ -187,7 +187,9 @@ Conn.setup()
 cfg = SurrealEx.Config.get_config(Conn)
 ```
 
-We can now use this database with `Conn.sql("my SurQL query")`
+We can now use this database with `Conn.sql(query)`.
+
+If the user is registered, you get a token that you can pass `Conn.sql(query, token)`.
 
 ## Schemaless
 
