@@ -269,6 +269,14 @@ Conn.sql("
 Conn.sql("SELECT * FROM a_table")
 ```
 
+This is how you can serialize into SurrealDB a CSV file for example:
+
+```sql
+INSERT INTO users (name, location) VALUES ('a', 'Nantes'),('b', 'Lille'),...
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
 ### Timestamps
 
 We can use [futures](https://surrealdb.com/docs/surrealql/datamodel/futures) for this. It is a value that will be dynamically computed on every access to the record.
@@ -331,9 +339,19 @@ Conn.sql("
 ")
 ```
 
+We can get the name of the devs with status 'dev' and the app for a given agency:
+
+```elixir
+Conn.sql("
+SELECT app_name,agency.team[WHERE status='dev'].name AS dev
+FROM app_table
+WHERE agency.name = 'dwyl.com';
+")
+```
+
 #### Aggregation query
 
-Return the number of developpers in the team for the webapp "unreal" with [array functions](https://surrealdb.com/docs/surrealql/functions/array).
+Return the number of developpers in the team for the webapp "unreal" with [array functions](https://surrealdb.com/docs/surrealql/functions/array). With the dot `.`, we change chain and dig in the relation:
 
 ```elixir
 {:ok, %{result: result}} = Conn.sql("
@@ -343,7 +361,7 @@ Return the number of developpers in the team for the webapp "unreal" with [array
 result
 ```
 
-You can also use `count()`. Return the number of developpers and there names per project:
+You can also use `count()`. Return the number of developpers and their names per project:
 
 ```elixir
 Conn.sql("
@@ -380,17 +398,11 @@ SELECT * FROM type::thing('app_table', 'unreal');
 We can run queries with parameters. Given a webapp, get the names of the team members with status "dev":
 
 ```elixir
-defmodule Filter do
-  def get_in(webapp, status) do
-    Conn.sql("
-      LET $agency = (SELECT agency FROM webapp:#{webapp});
-      LET $dev = (SELECT team[where status ='#{status}'] FROM $agency);
-      SELECT name from $dev;
-    ")
-  end
-end
-
-Filter.get_in("surreal", "dev")
+Conn.sql("
+  LET $status = 'dev';
+  LET $team = (SELECT agency.team[WHERE status=$status] FROM app_table:unreal);
+  SELECT name, status FROM $team;
+")
 ```
 
 ## Graph connections
@@ -466,17 +478,17 @@ BEGIN TRANSACTION;
   create webapp:app2 set name = 'app2';
   create webapp:app3 set name = 'app3';
 
-  create dev:nelson set name = 'nelson', status = 'founder';
-  create dev:nd set name = 'nd', status = 'trainee';
-  create dev:lucio set name = 'lucio', status = 'dev';
+  create developper:nelson set name = 'nelson', status = 'founder';
+  create developper:nd set name = 'nd', status = 'trainee';
+  create developper:lucio set name = 'lucio', status = 'dev';
 
   create agency:dwyl1 set name = 'dwyl', project = [], team = [];
   create agency:unreal1 set name = 'unreal', project = [], team = [];
 
   update agency:dwyl1 set projects += [webapp:1, webapp:3];
   update agency:unreal1 set projects += [webapp:2];
-  update agency:dwyl1 set team += [dev:nelson, dev:lucio];
-  update agency:unreal1 set team += [dev:nd];
+  update agency:dwyl1 set team += [developper:nelson, developper:lucio];
+  update agency:unreal1 set team += [developper:nd];
 COMMIT TRANSACTION;
 ")
 ```
@@ -490,7 +502,7 @@ Conn.sql("SELECT name AS company, team.*.name AS employees FROM agency:dwyl1")
 Conversely, find the agency for which a dev works. We used the `CONTAINS` [operator](https://surrealdb.com/docs/surrealql/operators).
 
 ```elixir
-Conn.sql("SELECT name AS company FROM agency WHERE team CONTAINS dev:nd; ")
+Conn.sql("SELECT name AS company FROM agency WHERE team CONTAINS developper:nd; ")
 ```
 
 #### Connections
@@ -542,9 +554,9 @@ BEGIN TRANSACTION;
   CREATE agency:dwyl2 SET name = 'dwyl';
   CREATE agency:unreal2 SET name = 'unreal';
 
-  RELATE dev:lucio->works_for->agency:dwyl2 CONTENT {owner: false, created_at: time::now()};
-  RELATE dev:nelson-> works_for->agency:dwyl2 CONTENT {owner: true, created_at: time::now()};
-  RELATE dev:nd->works_for->agency:unreal2 CONTENT {owner: true, created_at: time::now()};
+  RELATE developper:lucio->works_for->agency:dwyl2 CONTENT {owner: false, created_at: time::now()};
+  RELATE developper:nelson-> works_for->agency:dwyl2 CONTENT {owner: true, created_at: time::now()};
+  RELATE developper:nd->works_for->agency:unreal2 CONTENT {owner: true, created_at: time::now()};
 
   RELATE agency:dwyl2->developped->webapp:app1;
   RELATE agency:unreal2->developped->webapp:app2;
@@ -562,14 +574,14 @@ Conn.sql("select * from developped;")
 We have an association `[dev:id]->works_for->[agency:id]`. We can query for the _agency.name_ given a _dev:id_:
 
 ```elixir
-Conn.sql("SELECT name, ->works_for->agency.name AS employer FROM dev:nelson;")
+Conn.sql("SELECT name, ->works_for->agency.name AS employer FROM developper:nelson;")
 ```
 
 We now want all the devs working for a particular agency. We just _revert_ the relation: get all _dev:id_ from _agency:id_:
 
 ```elixir
 Conn.sql("
-  SELECT name, <-works_for<-dev.name AS employees FROM agency:dwyl2;
+  SELECT name, <-works_for<-developper.name AS employees FROM agency:dwyl2;
 ")
 ```
 
@@ -590,7 +602,7 @@ We can run _subqueries_ if we want the devs that worked on a given webapp:
 ```elixir
 Conn.sql("
   LET $agency=(SELECT <-developped<-agency.id AS id FROM webapp:app1);
-  SELECT  <-works_for<-dev.name AS employees FROM $agency;
+  SELECT  <-works_for<-developper.name AS employees FROM $agency;
 ")
 ```
 
@@ -801,8 +813,9 @@ Let's create an **event** query example. When we change a field, say the birthda
 
 ```elixir
 Conn.sql("
-  DEFINE EVENT passed_birthdates ON TABLE details WHEN $before.birthdate < $after.birthdate 
-  THEN (CREATE passed_birthdates SET birthdate = $after.birthdate)
+  DEFINE EVENT passed_birthdates ON TABLE details 
+  WHEN $before.birthdate < $after.birthdate 
+  THEN (CREATE passed_birthdates SET birthdate = $after.birthdate);
 ")
 ```
 
