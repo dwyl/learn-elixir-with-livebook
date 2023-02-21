@@ -175,18 +175,11 @@ defmodule Conn do
 end
 ```
 
-You describe the config: uri, (namespace, database) and basic auth, and pass it to the `Conn` module which uses the `SurrealEx.Conn` behaviour:
+You describe the config: uri, (namespace, database) and basic auth, and pass it to the `Conn` module which uses the `SurrealEx.Conn` behaviour.
+
+You run the setup:
 
 ```elixir
-config = [
-  interface: :http,
-  uri: "http://localhost:8000",
-  ns: "test",
-  db: "test",
-  user: "root",
-  pass: "root"
-]
-
 Conn.setup()
 cfg = SurrealEx.Config.get_config(Conn)
 ```
@@ -202,36 +195,42 @@ To **CREATE** a row with the "SurQL" DSL, we pass a table name and possibly a _u
 
 > Each individual statement within SurrealDB is run within its own transaction. When we pass an id, the transaction can be run only once.
 
+With `SurrealEx`, we run SurQL statements with `Conn.sql` where `Conn` is the module we defined with the behaviour `SurrealEx.Conn`.
+
 ```elixir
-query = "CREATE developper:nelson SET name = 'nelson', status= 'founder';"
-Conn.sql(query)
+Conn.sql("
+CREATE developper:nelson SET name = 'nelson', status= 'founder';
+")
 ```
 
-A good practice is to return the id when you run a mutating query. This is the case with the response tuple.
+When you don't specify the `id`, SurrealDB will assign one for you. Note that you can now run the CREATE query below _multiple times_, but you maybe don't want this.
 
 ```elixir
-{:ok, %{result: %{"id" => id}}} = Conn.sql("CREATE developper SET name = 'john', status = 'dev';")
-[_, john_id] = String.split(id, ":")
+Conn.sql("
+  CREATE developper SET name = 'nelson', status='founder'
+")
 ```
 
-Alternatively, you can use the package DSL with the module [SurrealEx.HTTP](https://hexdocs.pm/surreal_ex/SurrealEx.HTTP.html#create/3): you reach the REST API provided by SurrealDB. You pass the config, the table name and a payload.
-
-> Note that you cannot pass an id. SurrealDB will assign an id for you. In this case, the query below can be run multiple times.
+You can also use `INSERT INTO` and pass a JSON object (where you can specify the `id`), or use a more SQL like with `INSERT INTO ... VALUES`:
 
 ```elixir
-{:create, row_id} = SurrealEx.HTTP.create(cfg, :developper, "{name: 'bob', status: 'trainee'}")
+Conn.sql("
+  INSERT INTO developper {id: 'bob_id', name: 'bob', status: 'trainee' };
+")
 
-[_, bob_id] = String.split(row_id, ":")
+Conn.sql("
+  INSERT INTO developper (name, status, id) VALUES ('mike', 'founder', 'mike');
+")
 ```
 
-You can also use the `SurrealEx.HTTP` api to `.get` a specific row:
+#### Note on the `SurrealEx.HTTP` module
+
+You can use the module [SurrealEx.HTTP](https://hexdocs.pm/surreal_ex/SurrealEx.HTTP.html#create/3): you reach the REST API provided by SurrealDB. You pass the config, the table name and a payload. Note that you cannot pass an id. SurrealDB will assign an id for you. In this case, the query below can be run multiple times. We don't use it here.
 
 ```elixir
-{
-  SurrealEx.HTTP.get(cfg, :developper, "nelson"),
-  SurrealEx.HTTP.get(cfg, :developper, john_id),
-  SurrealEx.HTTP.get(cfg, :developper, bob_id)
-}
+{:create, row_id} = SurrealEx.HTTP.create(cfg, :developper, "{name: 'john', status: 'trainee'}")
+
+[_, john_id] = String.split(row_id, ":")
 ```
 
 We check the table:
@@ -239,6 +238,8 @@ We check the table:
 ```elixir
 Conn.sql("SELECT * FROM developper;")
 ```
+
+#### Transaction
 
 You can use a **transaction** for a set of changes. You can use `CREATE` and pass params, or run an  `INSERT INTO` and pass a JSON object.
 
@@ -256,13 +257,31 @@ Conn.sql(query)
 
 <!-- livebook:{"break_markdown":true} -->
 
-You pass an array of tuples. You can pass an id, or let Surreal do it for you if you don't need get retrive them immediatly.
+You pass an array of tuples. You can pass an id, or let Surreal do it for you if you don't need to retrieve them immediatly.
 
 ```elixir
 Conn.sql("
-  INSERT INTO agency [{name: 'one'}, {name: 'two', id: 'two'}];
+  INSERT INTO a_table [{name: 'one'}, {name: 'two', id: 'two'}];
 ")
-Conn.sql("SELECT * FROM agency")
+Conn.sql("SELECT * FROM a_table")
+```
+
+### Timestamps
+
+We can use [futures](https://surrealdb.com/docs/surrealql/datamodel/futures) for this. It is a value that will be dynamically computed on every access to the record.
+
+For example, we create a record with an id, a (fixed) "created_at" field, and a _future_ field "updated_at":
+
+```elixir
+Conn.sql("
+CREATE a_table:1 SET name='one', created_at=time::now(), updated_at=<future>{time::now()}
+")
+```
+
+```elixir
+Conn.sql("
+  UPDATE a_table:1 SET name='new one';
+")
 ```
 
 #### Record links
@@ -270,30 +289,33 @@ Conn.sql("SELECT * FROM agency")
 You can pass a nested object with the _dot_ **"."** format. Note how we can pass **record links** of the "developper" table into the "webapp" table.
 
 ```elixir
-query = "CREATE webapp:surreal SET 
+Conn.sql("
+CREATE app_table:surreal SET 
   app_name = 'surrealistic.com',
   agency.team = [developper:nelson, developper:lucio, developper:`#{john_id}`, developper:nd],
-  agency.name = 'dwyl.com';"
-
-Conn.sql(query)
+  agency.name = 'dwyl.com';
+")
 ```
 
 You can pass the data in JSON format:
 
 ```elixir
-query =
-  "INSERT INTO webapp 
-{id: 'json_app', app_name: 'json',agency: {name: 'dwyl.com', team: [developper:nelson, developper:lucio]}};"
-
-Conn.sql(query)
+Conn.sql("
+  INSERT INTO app_table {
+    id: 'unreal', 
+    app_name: 'unreal',
+    agency: {
+      name: 'dwyl.com', 
+      team: [developper:nelson, developper:lucio]
+    }
+  };
+")
 ```
 
 ```elixir
-Conn.sql("UPDATE webapp:json_app SET app_name='json.com';")
-```
-
-```elixir
-Conn.sql("SELECT * FROM webapp;")
+Conn.sql("
+  UPDATE app_table:unreal SET app_name='unreal.com';
+")
 ```
 
 #### "has_many" query nested records without "join"
@@ -301,30 +323,53 @@ Conn.sql("SELECT * FROM webapp;")
 We can get linked data **without joins** with the dot `.` notation:
 
 ```elixir
-Conn.sql("SELECT agency.team.*.name FROM webapp:surreal;")
-```
-
-```elixir
-Conn.sql("SELECT agency.team.*.status FROM webapp:json_app;")
+Conn.sql("
+  SELECT agency.team.*.name, agency.team.*.status FROM app_table:surreal;
+")
 ```
 
 #### Aggregation query
 
-Return the number of developpers in the team for the webapp "json_app"
+Return the number of developpers in the team for the webapp "unreal" with [array functions](https://surrealdb.com/docs/surrealql/functions/array).
 
 ```elixir
-{:ok, %{result: result}} = Conn.sql("SELECT * from array::len(webapp:json_app.agency.team);")
+{:ok, %{result: result}} = Conn.sql("
+    SELECT * from array::len(app_table:unreal.agency.team);
+  ")
 
 result
 ```
 
-Return the number of developpers and there names per project:
+You can also use `count()`. Return the number of developpers and there names per project:
 
 ```elixir
 Conn.sql("
-SELECT agency.team.*.name, count(agency.team) from webapp;
+SELECT 
+  app_name,
+  agency.name AS agency, 
+  agency.team.*.name AS members, 
+  count(agency.team) AS team_count 
+  FROM app_table;
 ")
-# SELECT count() FROM type::table('developper') GROUP BY webapp;
+# 
+```
+
+#### Type functions
+
+You can use [type functions](https://surrealdb.com/docs/surrealql/functions/type) that converts a string into the desired type:
+
+```elixir
+Conn.sql("
+  SELECT count() AS total, app_name FROM type::table('app_table') GROUP BY app_table;
+")
+```
+
+You can use the generic `type:thing` and pass the object and identifier:
+
+```elixir
+Conn.sql("
+SELECT * FROM type::thing('app_table', 'unreal');
+")
 ```
 
 #### Parameters and subqueries
@@ -439,7 +484,7 @@ We can get the team members name per agency (by omitting the id)  since we have 
 Conn.sql("SELECT name AS company, team.*.name AS employees FROM agency:dwyl1")
 ```
 
-Conversely, find the agency for which a dev works:
+Conversely, find the agency for which a dev works. We used the `CONTAINS` [operator](https://surrealdb.com/docs/surrealql/operators).
 
 ```elixir
 Conn.sql("SELECT name AS company FROM agency WHERE team CONTAINS dev:nd; ")
@@ -548,9 +593,24 @@ Conn.sql("
 
 ## Schemafull
 
-If we want to enforce a fixed struct, we can define a schema with `DEFINE TABLE..SCHEMAFULL`. We will check below that indeed it enforces or at least saves only "good" records.
+If we want to enforce a fixed struct, we can define a schema with `DEFINE TABLE..SCHEMAFULL`.
 
-We want to setup a one_to_many_through realtion with 3 tables. The ERD is shown below. Since we will get nested data in each table, we create a table for each nested level, and use `record(<table>)` as the field type to reference the link.
+We will check this enforcement below.
+
+The ERD shows a one_to_many_through relation with 3 tables. Apps has many users, and uses has one details. We set a 1-N relation between app and users, and 1-1 between users and details. We elaborate ith 2 examples:
+
+* one with 3 tables where we pass an array of references  (apps<-[users:id]) and a reference to another table (users <- details:id),
+* and one with 2 tables where we pass an array of references (apps<-[users:id]) and an object (users.details{}) that mirrors the thrid table.
+
+**How to pass an array of references?**
+Since we will have nested data in each table, we create a field that should be an _array of references_ to the other table. For this:
+
+* create a field say `team` of type `array` in the table "apps",
+* and declare the `team.*` of type `record(users)` which are references to rows of the table "users".
+
+For the table users, we have a 1-1 relation with the table details. In the first case mentionned above, we add a field of type `record(details)`.  In the second case, we declare a field of `TYPE object` and declare the nested fields in the table "users" that mirror the "details" table that is not used.
+
+We also use `INDEX` to enforce uniqueness.
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -558,67 +618,74 @@ We want to setup a one_to_many_through realtion with 3 tables. The ERD is shown 
 
 ```mermaid
 erDiagram
-WEBAPP ||--|{ DEV: developped_by
-    WEBAPP {
+    apps ||--|{ users: used_by
+    apps {
         string name
         string agency
         array team
     }
-    DEV ||--o| DETAILS : details
-    DEV {
+   users ||--o| details : details
+    users {
         int name
-        object details
+        array details
     }
-    DETAILS {
+    details {
         string email
         int age
         date birthdate
     }
 ```
 
+<!-- livebook:{"break_markdown":true} -->
+
+##### First case: 3 tables
+
 ```elixir
-query = "
+Conn.sql("
+BEGIN TRANSACTION;
 
-DEFINE TABLE details schemafull;
-DEFINE FIELD email ON details type string;
-DEFINE FIELD age ON details type int;
-DEFINE FIELD birthdate ON details type string;
+  DEFINE TABLE details SCHEMAFULL;
+  DEFINE FIELD email ON details TYPE string;
+  DEFINE FIELD age ON details type int ASSERT is::numeric($value);
+  DEFINE FIELD birthdate ON details TYPE string;
 
-DEFINE TABLE dev schemafull;
-DEFINE FIELD name ON dev type string;
-DEFINE FIELD details ON dev type record(details);
+  DEFINE TABLE users SCHEMAFUL;
+  DEFINE FIELD name ON users type string;
+  DEFINE FIELD details ON users TYPE record(details);
+  DEFINE INDEX users ON TABLE users COLUMNS name UNIQUE;
 
+  DEFINE TABLE apps SCHEMAFULL;
+  DEFINE FIELD name ON apps TYPE string;
+  DEFINE FIELD agency ON apps TYPE string;
+  DEFINE FIELD team ON apps TYPE array;
+  DEFINE FIELD team.* ON apps TYPE record(users);
 
-DEFINE TABLE webapp schemafull;
-DEFINE FIELD name ON webapp type string;
-DEFINE FIELD agency ON webapp type string;
-DEFINE FIELD team ON webapp type record(dev);
-"
+  DEFINE INDEX name ON TABLE apps COLUMNS name UNIQUE;
 
-Conn.sql(query)
+COMMIT TRANSACTION;
+")
 ```
 
 We can `INSERT INTO` (and set the `:id`), or `CREATE SET`. We can pass nested links. SurrealDB [understands dates](https://surrealdb.com/docs/surrealql/datamodel/datetimes).
 
 ```elixir
-query = "
-  BEGIN TRANSACTION;
-  INSERT INTO details {email: 'john@com', age: 20, id: 'john', birthdate: '2023-03-01'};
-  INSERT INTO dev {name: 'john', id: 'john', details: details:john};
-  CREATE dev:lucio SET name = 'lucio';
+Conn.sql("
+BEGIN TRANSACTION;
+  INSERT INTO details {id: 'john', email: 'john@com', age: 20, birthdate: '2023-03-01'};
+  INSERT INTO users {name: 'john', id: 'john', details: details:john};
+  
   CREATE details:lucio SET email='lucio@com', age = 20, birthdate = '2023-03-01';
-  INSERT INTO dev {name: 'lucio', id: 'lucio', details: details.lucio};
-  INSERT INTO dev {name: 'nelson', id: 'nelson'};
-  CREATE app:test SET agency = 'dwyl.com', team = [dev:nelson, dev:lucio];
-  COMMIT TRANSACTION;
-  "
-Conn.sql(query)
+  INSERT INTO users { id: 'lucio', name: 'lucio', details: details:lucio};
+  
+  INSERT INTO users {name: 'nelson', id: 'nelson'};
+
+  INSERT INTO apps {id: 'test', agency: 'dwyl', team: []};
+COMMIT TRANSACTION;
+")
 ```
 
-We check our insertions:
-
 ```elixir
-Conn.sql("SELECT name, details.* FROM dev;")
+Conn.sql("SELECT * FROM apps;")
 ```
 
 #### Prevent bad insertions
@@ -626,7 +693,9 @@ Conn.sql("SELECT name, details.* FROM dev;")
 Let's insert a "bad" record into the "details" table: we see that the field "age" has been set to 0, and the field "occupation" ignored.
 
 ```elixir
-Conn.sql("INSERT  INTO details {gender: 'f', occupation: 'eng', age: 'twenty', id: 'wrong'};")
+Conn.sql("
+INSERT  INTO details {gender: 'f', occupation: 'eng', age: 'twenty', id: 'wrong'};
+")
 ```
 
 #### Insert into a nested array
@@ -636,43 +705,90 @@ Let's create a new "dev" and add him as a team member: we use `array:concat` ([d
 Before:
 
 ```elixir
-{:ok, %{result: %{"team" => team}}} = Conn.sql("SELECT team from app:test;")
-team
+Conn.sql("SELECT team from apps:test;")
 ```
 
+Let's update and check if only filtered data of type "users" is accepted:
+
 ```elixir
-query = "
-BEGIN TRANSACTION;
-CREATE dev:toto SET name = 'toto';
-UPDATE app:test SET team += [dev:toto];
-COMMIT TRANSACTION;
-"
-Conn.sql(query)
-# UPDATE app:test SET team = array::concat(team, [dev:toto]);
+Conn.sql("
+  UPDATE apps:test SET team += [users:nelson, users:lucio, 'ok'], bad = 'input';
+")
 ```
 
 After:
 
 ```elixir
-{:ok, %{result: %{"team" => team}}} = Conn.sql("SELECT team FROM app:test")
-team
+Conn.sql("
+  SELECT team FROM apps:test;
+")
 ```
 
 ### Nested query without "join"
 
-This is what the data looks like:
+Let's select the names of the users for all apps developped by the agency "dwyl":
 
 ```elixir
 Conn.sql("
-  SELECT * FROM webapp;
+  SELECT team.*.name FROM apps WHERE agency = 'dwyl'
 ")
 ```
 
-Let's select per webapp the names of the team members for all apps developped by "dwyl.com":
+##### Second case: 2 tables
+
+Instead of defining a third table "details", we pass an object of `TYPE object` as a field of the table "users", and define the fields as nested attributes (`details.owner` for example). Since we defined a SCHEMAFULL table, the input is still filtered. For example, we can't pass an extra attribute in the "details" object on the talbe "users".
 
 ```elixir
 Conn.sql("
-  SELECT app_name, agency.team.*.name FROM webapp WHERE agency.name = 'dwyl.com';
+BEGIN TRANSACTION;
+
+  DEFINE TABLE users1 SCHEMAFUL;
+  DEFINE FIELD name ON users1 type string;
+  DEFINE FIELD details ON users1 TYPE object;
+  DEFINE FIELD details.age ON users1 TYPE int;
+  DEFINE FIELD details.owner ON users1 TYPE bool;
+  DEFINE INDEX users1 ON TABLE users1 COLUMNS name UNIQUE;
+
+  DEFINE TABLE apps1 SCHEMAFULL;
+  DEFINE FIELD name ON apps1 TYPE string;
+  DEFINE FIELD agency ON apps1 TYPE string;
+  DEFINE FIELD team ON apps1 TYPE array;
+  DEFINE FIELD team.* ON apps1 TYPE record(users1);
+
+  DEFINE INDEX name ON TABLE apps1 COLUMNS name UNIQUE;
+
+COMMIT TRANSACTION;
+")
+```
+
+```elixir
+Conn.sql("
+DELETE apps1:app1;
+DELETE users:1;
+
+  INSERT INTO users1 {
+    id: 1,
+    name: 1,
+    details: {
+      age: 20,
+      owner: false,
+      test1: 'bad'
+    }
+  };
+  INSERT INTO users1 {
+    id: 2,
+    name: 2,
+    details: {
+      age: 20,
+      owner: true
+    }
+  };
+
+  INSERT INTO apps1 {
+    name: 'app1',
+    agency: 'surreal',
+    team: [users1:1, users1:2, 'toto']
+  };
 ")
 ```
 
