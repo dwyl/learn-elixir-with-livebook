@@ -8,13 +8,15 @@ Mix.install([
 
 ## A word on SurrealDB
 
-When an application is running on embedded devices, with the model "off-line first", you want to use your embedded (local) database first, and when the user has internet access, you can sync with a remote database. One can use SQLite, a single file database but it may be difficult to synchronise with a backend. This is where SurrealDB comes into play. It is lightweight cloud native database that claims to synchronise easily to a backend.
+When an application runs on embedded devices, with the model "off-line first", you want to use your embedded (local) database first. When the user has access to the internet, you can sync with a remote database. One can use SQLite, a single file database, but it may be hard to synchronise with a backend. Here comes SurrealDB into play. It is a lightweight cloud-native database that claims to synchronise easily to a backend.
 
-SurrealDB is essentially a key/value ACID compliant database. It can be run in-memory or with local persistance or with a remote connection. Redis is this kind of in-memory databasen mainly used for caching, for PubSub and for streams (queue like). SurrealDB is however different as it offers a DSL very close to SQL and allows to write Javascript functions. By default, it is _schemaless_ so you can insert any key/value. If the data structure is fixed and you want more control, you can turn a table into a _schemafull_ table.
+SurrealDB is essentially a key/value ACID-compliant database. It can run in memory or with local persistence,  or with a remote connection. Redis is this kind of in-memory database mainly used for caching, for PubSub and streams (queue-like). SurrealDB is different as it offers a DSL very close to SQL and allows you to write Javascript functions.
 
-If you run locally, you need to start a server. It can also be run "serverless", meaning that you reach a service in the cloud. By default, it points to <https://cloud.surrealdb.com>. The server provides a REST api and a unique endpoint at "/sql".
+By default, it is schemaless;  you can insert any key/value. When you want more control, you can turn a table into a schemafull table. structure is fixed and you want more control, you can turn a table into a _schemafull_ table.
 
-All you do is sending POST requests to the endpoint with the query in the body.
+If you run the server locally, you need to start a server. It can also be run "serverless", meaning that you reach a service in the cloud. By default, it points to <https://cloud.surrealdb.com>. The server provides a REST API and a unique endpoint at "/sql".
+
+All you need to do is send POST requests to the endpoint with the query in the body.
 
 Websockets aren't documented [at the moment](https://surrealdb.com/docs/integration/websockets).
 
@@ -24,9 +26,11 @@ It can run the database in-memory. This configuration is used here.
 
 Websockets aren't documented [at the moment](https://surrealdb.com/docs/integration/websockets). This would make a lot of sense combined with events.
 
+It is also worth noting that there are some functions to deal with GeoJSON data. It can be important as many apps that deal with geolocation are embedded apps. However, spatial indexing doesn't seem to be implemented  (cf PostGis [using GIST](http://postgis.net/workshops/postgis-intro/indexing.html)).
+
 ## Start a local SurrealDB server
 
-You can run a Docker image to start a SurrealDB server. It is setup here to run in-memory with the following credentials: "user", "pass", "location-of-the-database":
+You can run a Docker image to start a SurrealDB server. It is setup here to run in memory with the following credentials: "user", "pass", "location-of-the-database":
 
 ```bash
 docker run --rm -p 8000:8000 surrealdb/surrealdb:latest start --log debug --user root --pass root memory
@@ -317,7 +321,7 @@ Conn.sql("
 ")
 ```
 
-#### "has_many" query nested records without "join"
+#### Query nested records without "join"
 
 We can get linked data **without joins** with the dot `.` notation:
 
@@ -391,7 +395,7 @@ Filter.get_in("surreal", "dev")
 
 ## Graph connections
 
-Suppose we have a 1-n relation between agencies and webapps, and a 1-n relation between agencies and devs. In a conventional DB, we would have a foreign key "agency_id" in the table Webapp (Webapp belongs_to Agency), and a foreign key "agency_id" in the Dev table (Dev belongs_to Agency).
+Suppose we have a 1-n relation between agencies and webapps, and a 1-n relation between agencies and devs. In a conventional DB, we would have a foreign key "agency_id" in the table "webapps" ("belongs_to" agencies), and a foreign key "agency_id" in the "devs" table ("belongs_to" agencies).
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -418,7 +422,7 @@ erDiagram
 
 With SurrealDB, we can use 2 approaches:
 
-* set an array of [webapp_ids] and an array of [dev_ids] as fields of the table Agency,
+* set an array of [webapp_ids] and an array of [dev_ids] as fields of the table agencies,
 * or set connections between the nodes.
 
 <!-- livebook:{"break_markdown":true} -->
@@ -453,7 +457,7 @@ erDiagram
 
 <!-- livebook:{"break_markdown":true} -->
 
-We added a field "team" and webapps which respectively stores all the devs employed and the webapps developed by an agency.
+We added a field "team" and webapps which respectively stores the references to devs employed and to webapps developed by an agency.
 
 ```elixir
 Conn.sql("
@@ -609,7 +613,7 @@ Since we will have nested data in each table, we create a field that should be a
 
 For the table users, we have a 1-1 relation with the table details. In the first case mentionned above, we add a field of type `record(details)`.  In the second case, we declare a field of `TYPE object` and declare the nested fields in the table "users" that mirror the "details" table that is not used.
 
-We also use `INDEX` to enforce uniqueness.
+We also use `INDEX` to enforce uniqueness. We also showcased field constraints and default values (with `VALUE $value`)
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -645,7 +649,7 @@ BEGIN TRANSACTION;
 
   DEFINE TABLE details SCHEMAFULL;
   DEFINE FIELD email ON details TYPE string;
-  DEFINE FIELD age ON details type int ASSERT is::numeric($value);
+  DEFINE FIELD age ON details type int ASSERT is::numeric($value) and $value>18;
   DEFINE FIELD birthdate ON details TYPE string;
 
   DEFINE TABLE users SCHEMAFUL;
@@ -655,7 +659,7 @@ BEGIN TRANSACTION;
 
   DEFINE TABLE apps SCHEMAFULL;
   DEFINE FIELD name ON apps TYPE string;
-  DEFINE FIELD agency ON apps TYPE string;
+  DEFINE FIELD agency ON apps TYPE string VALUE $value OR 'dwyl;
   DEFINE FIELD team ON apps TYPE array;
   DEFINE FIELD team.* ON apps TYPE record(users);
 
