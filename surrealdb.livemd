@@ -2,7 +2,8 @@
 
 ```elixir
 Mix.install([
-  {:surreal_ex, "~> 0.2.0"}
+  {:surreal_ex, "~> 0.2.0"},
+  {:csv, "~> 3.0"}
 ])
 ```
 
@@ -155,6 +156,8 @@ Mix.install([{:surreal_ex, "~> 0.2.0"}], config_path: "config.exs")
 ```
 
 <!-- livebook:{"break_markdown":true} -->
+
+<hr />
 
 * You can alternatively use the module `SurrealEx.Config`. Let's define a module `Conn` to wrap the config.
 
@@ -892,3 +895,127 @@ Conn.login("admin", "1234")
 ```elixir
 Conn.login("dev", "supersecret")
 ```
+
+## Insert Elixir maps and CSV
+
+Use the `SurrealEx.HTTP.Table` module:
+
+```elixir
+defmodule FromAirportMap do
+  use SurrealEx.HTTP.Table,
+    conn: Conn,
+    table: "airports"
+end
+```
+
+Then you can insert Elixir maps:
+
+```elixir
+Conn.sql("DELETE airports")
+FromAirportMap.create(%{country: "FR", IATA: "CDG"})
+Conn.sql("SELECT * FROM airports")
+```
+
+### Insert a CSV file
+
+Let's download a CSV file, parse it into a map and insert into a SurrealDB table.
+
+Firstly, since SurrealEx seems to use HTTPoison to POST to the server, we build a wrapper around it to stream down a file.
+
+```elixir
+defmodule HTTPoisonStream do
+  @doc """
+  Uses `HTTPoison` and builds a custom stream from `HTTPoison.AsyncChunk`.
+  """
+  def download(url) do
+    Stream.resource(
+      # start_fun: stream line by line with `async: :once`
+      fn -> HTTPoison.get!(url, %{}, stream_to: self(), async: :once) end,
+
+      # next_fun,
+      fn %HTTPoison.AsyncResponse{id: id} = resp ->
+        receive do
+          %HTTPoison.AsyncStatus{id: ^id, code: _code} ->
+            HTTPoison.stream_next(resp)
+            {[], resp}
+
+          %HTTPoison.AsyncHeaders{id: ^id, headers: _headers} ->
+            HTTPoison.stream_next(resp)
+            {[], resp}
+
+          %HTTPoison.AsyncChunk{id: ^id, chunk: chunk} ->
+            HTTPoison.stream_next(resp)
+            {[chunk], resp}
+
+          %HTTPoison.AsyncEnd{id: ^id} ->
+            {:halt, resp}
+        after
+          5000 ->
+            raise "timeout"
+        end
+      end,
+      # end_fun
+      fn %HTTPoison.AsyncResponse{id: id} = _resp ->
+        :hackney.stop_async(id)
+      end
+    )
+  end
+end
+```
+
+This is where we will get a downloadable CSV dataset:
+
+```elixir
+unzipped_airports =
+  "https://pkgstore.datahub.io/core/airport-codes/airport-codes_csv/data/e07739e49300d125989ee543d5598c4b/airport-codes_csv.csv"
+```
+
+We parse a CSV line into a map with this module:
+
+```elixir
+defmodule AirportDataset do
+  @moduledoc """
+  Provides mapping for the Airport dataset: <https://datahub.io/core/airport-codes>
+  """
+  def map(row) do
+    %{
+      ident: Enum.at(row, 0),
+      type: Enum.at(row, 1),
+      name: Enum.at(row, 2),
+      elevation_ft: Enum.at(row, 3),
+      continent: Enum.at(row, 4),
+      iso_country: Enum.at(row, 5),
+      iso_region: Enum.at(row, 6),
+      municipality: Enum.at(row, 7),
+      gps_code: Enum.at(row, 8),
+      iata_code: Enum.at(row, 9),
+      local_code: Enum.at(row, 10),
+      coordinates: Enum.at(row, 11)
+    }
+  end
+end
+```
+
+We can now download the file (small 6MB), CSV parse it, and parse into an Elixir map and finally, insert into a SurrealDB table with the module FromAirportMap:
+
+```elixir
+list =
+  HTTPoisonStream.download(unzipped_airports)
+  |> Stream.map(&IO.chardata_to_string/1)
+  |> CSV.decode!(headers: false, separator: ?,)
+  |> Stream.map(&AirportDataset.map/1)
+  |> Stream.chunk_every(1000)
+  |> Stream.map(fn chunk ->
+    Enum.map(chunk, &FromAirportMap.create/1)
+  end)
+  |> Enum.to_list()
+```
+
+```elixir
+{:create, airport_id} = list |> List.flatten() |> List.last()
+Conn.sql("SELECT * FROM #{airport_id};")
+```
+
+It takes almost 2 minutes to process such a small file. The same operation with SQLite takes 2 seconds.
+
+The problem could be that we are inserting row per row as there is no routine to `INSERT  INTO` multiple values.
