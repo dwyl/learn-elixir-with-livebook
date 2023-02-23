@@ -34,7 +34,7 @@ We made a quick demo on how to work with SurrealDB in Elixir with the [SurrealEX
 
 A quick comparison is made by serializing a CSV file into a SurrealDB table vs an `SQLite` table with Elixir, and then querying the tables. There is a clear gap in terms of performance, with insertions and aggregation function and select functions, schemaless and schemafull with index. For example:
 
-* to insert 57000 rows, it takes approx around 9s with SurrealDB vs less than 2 for SQLite.
+* to insert 57000 rows, it takes approx around 6-7ss with SurrealDB (remove the `log debug` flag) vs less than 2 for SQLite.
 * to count 57000 rows, it takes approx 350ms with SurrealDB vs 7ms for SQLite.
 * to query on the schemaless table a given row, it takes approx 200ms and approx 150ms for the schemafull indexed table. It takes approx 10ms for SQLite without index, and 1ms when we index the column.
 
