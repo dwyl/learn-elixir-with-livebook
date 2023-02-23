@@ -17,9 +17,7 @@ SurrealDB is essentially a key/value ACID-compliant database. It can run in memo
 
 By default, it is schemaless;  you can insert any key/value. When you want more control, you can turn a table into a schemafull table. structure is fixed and you want more control, you can turn a table into a _schemafull_ table.
 
-If you run the server locally, you need to start a server. It can also be run "serverless", meaning that you reach a service in the cloud. By default, it points to <https://cloud.surrealdb.com>. The server provides a REST API and a unique endpoint at "/sql".
-
-All you need to do is send POST requests to the endpoint with the query in the body.
+If you run the server locally, you need to start a server. It can also be run "serverless", meaning that you reach a service in the cloud. By default, it points to <https://cloud.surrealdb.com>. The server provides a REST API for CRUD queries, and a unique endpoint at "/sql" where you POST a query.
 
 Websockets aren't documented [at the moment](https://surrealdb.com/docs/integration/websockets).
 
@@ -31,7 +29,8 @@ Websockets aren't documented [at the moment](https://surrealdb.com/docs/integrat
 
 It is also worth noting that there are some functions to deal with GeoJSON data. It can be important as many apps that deal with geolocation are embedded apps. However, spatial indexing doesn't seem to be implemented  (cf PostGis [using GIST](http://postgis.net/workshops/postgis-intro/indexing.html)).
 
-We further test working with SurrealDB in Elixir with the [SurrealEX](https://hexdocs.pm/surreal_ex/readme.html) package, and make a quick comparison of serializing a CSV into a SurrealDB table vs an SQLite table with Elixir.
+SurrealDB still seems pretty new. I still needs to be battle tested, but also how would one migrate to SurrealDB, as well as performance metrics.
+We made a quick demo on how to work with SurrealDB in Elixir with the [SurrealEX](https://hexdocs.pm/surreal_ex/readme.html) package. A metric used was a quick comparison of serializing a CSV into a SurrealDB table vs an SQLite table with Elixir. There is a clear gap.
 
 ## Start a local SurrealDB server
 
