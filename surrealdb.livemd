@@ -1026,19 +1026,17 @@ We can now download the file (small 6MB), CSV parse it, and parse into an Elixir
 end)
 ```
 
+It takes around 10s to process this small file. The same operation with the relational database SQLite takes less than 1 second.
+
+The SELECT query is still fast (2ms)
+
 ```elixir
 Conn.sql("SELECT * FROM airports limit 2;")
 ```
 
-It takes around 10s to process this small file. The same operation with the relational database SQLite takes less than 1 second.
-
-The SELECT query is still fast (5ms)
-
 ```elixir
 Conn.sql("SELECT count() from airports GROUP BY all ;")
 ```
-
-## Schemaless vs indexed Schemafull
 
 Let's select the airports listed in Valledupar, Colombia. It takes around 200ms.
 
@@ -1051,6 +1049,8 @@ Let's select one, "SK-151". It takes approx 180ms.
 ```elixir
 Conn.sql("Select * FROM airports WHERE ident = 'SK-151';")
 ```
+
+## Schemaless vs indexed Schemafull
 
 Let's build a schemafull table 'airport" from the schemaless table "airports" and add an INDEX on the column "ident" to evaluate the performance.
 
@@ -1144,6 +1144,7 @@ defmodule SqilteConn do
 end
 
 {:ok, conn} = SqilteConn.start()
+SqilteConn.reset_table(conn, "csv")
 SqilteConn.create_table(conn, "csv")
 ```
 
@@ -1213,11 +1214,27 @@ We can now stream down the CSV endpoint into an SQLite table:
 end)
 ```
 
+The aggregation query below took 5ms, much less than the SurrealDB equivalent:
+
 ```elixir
 Repo.aggregate(Airport, :count)
 ```
 
-Let's select a row with "ident = SK-151". It takes 11ms.
+Let's select a row with "ident = SK-151". It takes 10ms, much less than SurrealDB.
+
+```elixir
+Repo.get_by(Airport, ident: "SK-151")
+```
+
+Let's create an INDEX on the same column "ident":
+
+```elixir
+Exqlite.Sqlite3.execute(conn, "
+CREATE INDEX ident_idx ON csv (ident);
+")
+```
+
+The query takes now 1ms.
 
 ```elixir
 Repo.get_by(Airport, ident: "SK-151")
