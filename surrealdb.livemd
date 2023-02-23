@@ -3,7 +3,9 @@
 ```elixir
 Mix.install([
   {:surreal_ex, "~> 0.2.0"},
-  {:csv, "~> 3.0"}
+  {:csv, "~> 3.0"},
+  {:ecto_sql, "~> 3.9"},
+  {:ecto_sqlite3, "~> 0.9.1"}
 ])
 ```
 
@@ -101,7 +103,8 @@ $ surreal sql --conn http://localhost:8000 --user root --pass root --ns testns -
 You can simply connect via an HTTP client and pass your query once you defined the correct headers and authentication:
 
 ```elixir
-url = "http://localhost:8000/sql"
+url = "http://localhost:8000/key/airports"
+url_sql = "http://localhost:8000/sql"
 
 headers = [
   {"accept", "application/json"},
@@ -112,16 +115,19 @@ headers = [
 
 auth = [hackney: [basic_auth: {"root", "root"}]]
 
-query = "create test:1 set v='a';"
+q = Jason.encode!([%{c: 1}, %{c: 2}])
+# |> IO.inspect()
+# query = "INSERT INTO airports #{q}"
+query = "INSERT INTO airports #{q}"
 
-HTTPoison.post!(url, query, headers, auth)
-|> Map.get(:status_code)
+HTTPoison.post!(url_sql, query, headers, auth)
+# |> Map.get(:status_code)
 ```
 
 You can get the response:
 
 ```elixir
-HTTPoison.post!(url, "select * from test;", headers, auth)
+HTTPoison.post!(url_sql, "select * from airports;", headers, auth)
 |> Map.get(:body)
 |> Jason.decode!()
 ```
@@ -916,7 +922,7 @@ FromAirportMap.create(%{country: "FR", IATA: "CDG"})
 Conn.sql("SELECT * FROM airports")
 ```
 
-### Insert a CSV file
+## Insert a CSV file
 
 Let's download a CSV file, parse it into a map and insert into a SurrealDB table.
 
@@ -999,23 +1005,144 @@ end
 We can now download the file (small 6MB), CSV parse it, and parse into an Elixir map and finally, insert into a SurrealDB table with the module FromAirportMap:
 
 ```elixir
-list =
+:timer.tc(fn ->
   HTTPoisonStream.download(unzipped_airports)
   |> Stream.map(&IO.chardata_to_string/1)
   |> CSV.decode!(headers: false, separator: ?,)
   |> Stream.map(&AirportDataset.map/1)
   |> Stream.chunk_every(1000)
   |> Stream.map(fn chunk ->
-    Enum.map(chunk, &FromAirportMap.create/1)
+    query = Jason.encode!(chunk)
+    Conn.sql("INSERT INTO airports #{query}")
   end)
-  |> Enum.to_list()
+  |> Stream.run()
+end)
 ```
 
 ```elixir
-{:create, airport_id} = list |> List.flatten() |> List.last()
-Conn.sql("SELECT * FROM #{airport_id};")
+Conn.sql("SELECT * FROM airports limit 2;")
 ```
 
-It takes almost 2 minutes to process such a small file. The same operation with SQLite takes 2 seconds.
+It takes around 10s to process this small file. The same operation with the relational database SQLite takes less than 1 second.
 
-The problem could be that we are inserting row per row as there is no routine to `INSERT  INTO` multiple values.
+The SELECT query is still fast (5ms)
+
+## Compare with SQLite
+
+We setup the SQLite connection, database and create a table to mirror the CSV file we got. The setup is much heavier than SurrealDB.
+
+Our dependencies are:
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+Mix.install([
+  {:surreal_ex, "~> 0.2.0"},
+  {:csv, "~> 3.0"},
+  {:ecto_sql, "~> 3.9"},
+  {:ecto_sqlite3, "~> 0.9.1"}
+])
+```
+
+```elixir
+defmodule SqilteConn do
+  def start do
+    Exqlite.Sqlite3.open("test")
+  end
+
+  def create_table(conn, table) do
+    Exqlite.Sqlite3.execute(conn, "DROP TABLE IF EXISTS #{table}")
+
+    Exqlite.Sqlite3.execute(
+      conn,
+      "CREATE TABLE IF NOT EXISTS #{table} (
+        id integer primary key,
+        ident text,
+        elevation_ft text,
+        type text,
+        name text,
+        continent text,
+        iso_country text,
+        iso_region text,
+        municipality text,
+        iata_code text,
+        local_code text,
+        gps_code text,
+        coordinates text
+        )"
+    )
+  end
+
+  def reset_table(conn, table) do
+    Exqlite.Sqlite3.execute(conn, "DROP TABLE IF EXISTS #{table}")
+    create_table(conn, table)
+  end
+end
+
+{:ok, conn} = SqilteConn.start()
+SqilteConn.create_table(conn, "csv")
+```
+
+We create a Repo and a Repo since SQLite adaptor ecto_sqlite3 works best with it (as per the docs for the SQLite adaptor for Elixir).
+
+The Repo:
+
+```elixir
+defmodule Repo do
+  use Ecto.Repo, adapter: Ecto.Adapters.SQLite3, otp_app: :noop
+end
+
+case Repo.start_link(database: "test", default_chunk_size: 100) do
+  {:ok, pid} -> {:ok, pid}
+  {:error, {_, pid}} -> {:ok, pid}
+end
+```
+
+The schema:
+
+```elixir
+headers = [
+  :ident,
+  :elevation_ft,
+  :type,
+  :name,
+  :continent,
+  :iso_country,
+  :iso_region,
+  :municipality,
+  :iata_code,
+  :local_code,
+  :gps_code,
+  :coordinates
+]
+
+defmodule Airport do
+  use Ecto.Schema
+  @headers headers
+
+  schema "csv" do
+    Enum.each(@headers, &field(&1, :string))
+  end
+end
+```
+
+Let's check that everything is setup:
+
+```elixir
+Airport.__schema__(:fields) |> IO.inspect()
+Repo.all(Airport)
+```
+
+We can now stream down the CSV endpoint into an SQLite table:
+
+```elixir
+:timer.tc(fn ->
+  HTTPoisonStream.download(unzipped_airports)
+  |> Stream.map(&IO.chardata_to_string/1)
+  |> CSV.decode!(headers: false, separator: ?,)
+  |> Stream.map(&AirportDataset.map/1)
+  |> Stream.chunk_every(1000)
+  |> Stream.each(&Repo.insert_all(Airport, &1))
+  |> Stream.run()
+end)
+```
