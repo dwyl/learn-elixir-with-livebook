@@ -31,6 +31,8 @@ Websockets aren't documented [at the moment](https://surrealdb.com/docs/integrat
 
 It is also worth noting that there are some functions to deal with GeoJSON data. It can be important as many apps that deal with geolocation are embedded apps. However, spatial indexing doesn't seem to be implemented  (cf PostGis [using GIST](http://postgis.net/workshops/postgis-intro/indexing.html)).
 
+We further test working with SurrealDB in Elixir with the [SurrealEX](https://hexdocs.pm/surreal_ex/readme.html) package, and make a quick comparison of serializing a CSV into a SurrealDB table vs an SQLite table with Elixir.
+
 ## Start a local SurrealDB server
 
 You can run a Docker image to start a SurrealDB server. It is setup here to run in memory with the following credentials: "user", "pass", "location-of-the-database":
