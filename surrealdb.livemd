@@ -17,7 +17,7 @@ SurrealDB is essentially a key/value ACID-compliant database. It can run in memo
 
 By default, it is schemaless;  you can insert any key/value. When you want more control, you can turn a table into a schemafull table. structure is fixed and you want more control, you can turn a table into a _schemafull_ table.
 
-If you run the server locally, you need to start a server. It can also be run "serverless", meaning that you reach a service in the cloud. By default, it points to <https://cloud.surrealdb.com>. The server provides a REST API for CRUD queries, and a unique endpoint at "/sql" where you POST a query.
+If you run the server locally, you need to start a server. It can also be run "serverless", meaning that you reach a service in the cloud. By default, it points to <https://cloud.surrealdb.com>. HTTP is all you need: the server provides a REST API for CRUD queries, and a unique endpoint at "/sql" where you POST a query.
 
 Websockets aren't documented [at the moment](https://surrealdb.com/docs/integration/websockets).
 
