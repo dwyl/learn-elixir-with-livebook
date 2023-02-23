@@ -1137,12 +1137,14 @@ We can now stream down the CSV endpoint into an SQLite table:
 
 ```elixir
 :timer.tc(fn ->
-  HTTPoisonStream.download(unzipped_airports)
-  |> Stream.map(&IO.chardata_to_string/1)
-  |> CSV.decode!(headers: false, separator: ?,)
-  |> Stream.map(&AirportDataset.map/1)
-  |> Stream.chunk_every(1000)
-  |> Stream.each(&Repo.insert_all(Airport, &1))
-  |> Stream.run()
+  Repo.transaction(fn ->
+    HTTPoisonStream.download(unzipped_airports)
+    |> Stream.map(&IO.chardata_to_string/1)
+    |> CSV.decode!(headers: false, separator: ?,)
+    |> Stream.map(&AirportDataset.map/1)
+    |> Stream.chunk_every(1000)
+    |> Stream.each(&Repo.insert_all(Airport, &1))
+    |> Stream.run()
+  end)
 end)
 ```
