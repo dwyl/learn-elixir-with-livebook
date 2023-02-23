@@ -906,7 +906,7 @@ Conn.login("dev", "supersecret")
 
 ## Insert Elixir maps and CSV
 
-Use the `SurrealEx.HTTP.Table` module:
+Use the `SurrealEx.HTTP.Table` module. It reaches the REST API provided by SurrealDB.
 
 ```elixir
 defmodule FromAirportMap do
@@ -926,7 +926,7 @@ Conn.sql("SELECT * FROM airports")
 
 ## Insert a CSV file
 
-Let's download a CSV file, parse it into a map and insert into a SurrealDB table.
+Let's download a CSV file, parse it into a map and insert into a SurrealDB table. We will use the unique POST "/sql" endpoint with the routine `Conn.sql`.
 
 Firstly, since SurrealEx seems to use HTTPoison to POST to the server, we build a wrapper around it to stream down a file.
 
