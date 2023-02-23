@@ -32,9 +32,11 @@ It is also worth noting that there are some functions to deal with GeoJSON data.
 SurrealDB still seems pretty new. I still needs to be battle tested, but also how would one migrate to SurrealDB, as well as performance metrics.
 We made a quick demo on how to work with SurrealDB in Elixir with the [SurrealEX](https://hexdocs.pm/surreal_ex/readme.html) package.
 
-A metric used was a quick comparison of serializing a CSV into a SurrealDB table vs an `SQLite` table with Elixir. There is a clear gap in terms of performance, with insertions and aggregation function and select functions, schemaless and schemafull with index. For example, to insert 57000 rows, it takes approx around 9s with SurrealDB vs less than 2 for SQLite. To count 57000 rows, it takes approx 350ms with SurrealDB vs 7ms for SQLite. To query on the schemaless table a given row, it takes approx 200ms and approx 150ms for the schemafull indexed table. It takes approx 11ms for SQLite.
+A quick comparison is made by serializing a CSV file into a SurrealDB table vs an `SQLite` table with Elixir, and then querying the tables. There is a clear gap in terms of performance, with insertions and aggregation function and select functions, schemaless and schemafull with index. For example:
 
-There is a performance gap.
+* to insert 57000 rows, it takes approx around 9s with SurrealDB vs less than 2 for SQLite.
+* to count 57000 rows, it takes approx 350ms with SurrealDB vs 7ms for SQLite.
+* to query on the schemaless table a given row, it takes approx 200ms and approx 150ms for the schemafull indexed table. It takes approx 10ms for SQLite without index, and 1ms when we index the column.
 
 ## Start a local SurrealDB server
 
