@@ -285,10 +285,12 @@ Conn.sql("
 Conn.sql("SELECT * FROM a_table")
 ```
 
-This is how you can serialize into SurrealDB a CSV file for example:
+An example of inserting a CSV file into a SurrealDB table is given further down with Elixir.
+
+You can also use the form:
 
 ```sql
-INSERT INTO users (name, location) VALUES ('a', 'Nantes'),('b', 'Lille'),...
+INSERT INTO users (name, location) VALUES ('La Cantine', 'Nantes'),('Work In Excess', 'Nantes'),...
 ```
 
 <!-- livebook:{"break_markdown":true} -->
