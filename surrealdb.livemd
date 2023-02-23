@@ -1013,7 +1013,11 @@ We can now download the file (small 6MB), CSV parse it, and parse into an Elixir
   |> Stream.chunk_every(1000)
   |> Stream.map(fn chunk ->
     query = Jason.encode!(chunk)
-    Conn.sql("INSERT INTO airports #{query}")
+    Conn.sql("
+      BEGIN TRANSACTION;
+      INSERT INTO airports #{query};
+      COMMIT TRANSACTION;
+    ")
   end)
   |> Stream.run()
 end)
