@@ -1019,10 +1019,10 @@ We can now download the file (small 6MB), CSV parse it, and parse into an Elixir
   |> Stream.map(&AirportDataset.map/1)
   |> Stream.chunk_every(1000)
   |> Stream.map(fn chunk ->
-    query = Jason.encode!(chunk)
+    data = Jason.encode!(chunk)
     Conn.sql("
       BEGIN TRANSACTION;
-      INSERT INTO airports #{query};
+      INSERT INTO airports #{data};
       COMMIT TRANSACTION;
     ")
   end)
