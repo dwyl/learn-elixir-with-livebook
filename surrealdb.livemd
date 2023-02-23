@@ -30,7 +30,11 @@ Websockets aren't documented [at the moment](https://surrealdb.com/docs/integrat
 It is also worth noting that there are some functions to deal with GeoJSON data. It can be important as many apps that deal with geolocation are embedded apps. However, spatial indexing doesn't seem to be implemented  (cf PostGis [using GIST](http://postgis.net/workshops/postgis-intro/indexing.html)).
 
 SurrealDB still seems pretty new. I still needs to be battle tested, but also how would one migrate to SurrealDB, as well as performance metrics.
-We made a quick demo on how to work with SurrealDB in Elixir with the [SurrealEX](https://hexdocs.pm/surreal_ex/readme.html) package. A metric used was a quick comparison of serializing a CSV into a SurrealDB table vs an SQLite table with Elixir. There is a clear gap.
+We made a quick demo on how to work with SurrealDB in Elixir with the [SurrealEX](https://hexdocs.pm/surreal_ex/readme.html) package.
+
+A metric used was a quick comparison of serializing a CSV into a SurrealDB table vs an `SQLite` table with Elixir. There is a clear gap in terms of performance, with insertions and aggregation function and select functions, schemaless and schemafull with index. For example, to insert 57000 rows, it takes approx around 9s with SurrealDB vs less than 2 for SQLite. To count 57000 rows, it takes approx 350ms with SurrealDB vs 7ms for SQLite. To query on the schemaless table a given row, it takes approx 200ms and approx 150ms for the schemafull indexed table. It takes approx 11ms for SQLite.
+
+There is a performance gap.
 
 ## Start a local SurrealDB server
 
@@ -117,8 +121,6 @@ headers = [
 auth = [hackney: [basic_auth: {"root", "root"}]]
 
 q = Jason.encode!([%{c: 1}, %{c: 2}])
-# |> IO.inspect()
-# query = "INSERT INTO airports #{q}"
 query = "INSERT INTO airports #{q}"
 
 HTTPoison.post!(url_sql, query, headers, auth)
@@ -903,7 +905,7 @@ Conn.login("admin", "1234")
 Conn.login("dev", "supersecret")
 ```
 
-## Insert Elixir maps and CSV
+## Insert Elixir maps
 
 Use the `SurrealEx.HTTP.Table` module. It reaches the REST API provided by SurrealDB.
 
@@ -1032,6 +1034,63 @@ It takes around 10s to process this small file. The same operation with the rela
 
 The SELECT query is still fast (5ms)
 
+```elixir
+Conn.sql("SELECT count() from airports GROUP BY all ;")
+```
+
+## Schemaless vs indexed Schemafull
+
+Let's select the airports listed in Valledupar, Colombia. It takes around 200ms.
+
+```elixir
+Conn.sql("SELECT * FROM airports WHERE municipality = 'Valledupa';")
+```
+
+Let's select one, "SK-151". It takes approx 180ms.
+
+```elixir
+Conn.sql("Select * FROM airports WHERE ident = 'SK-151';")
+```
+
+Let's build a schemafull table 'airport" from the schemaless table "airports" and add an INDEX on the column "ident" to evaluate the performance.
+
+```elixir
+Conn.sql("
+BEGIN TRANSACTION;
+DEFINE TABLE airport SCHEMAFULL;
+DEFINE INDEX ident ON TABLE airport COLUMNS ident UNIQUE;
+DEFINE FIELD ident ON TABLE airport TYPE string;
+DEFINE FIELD elevation_ft ON TABLE airport TYPE string;
+DEFINE FIELD name ON TABLE airport TYPE string;
+DEFINE FIELD continent ON TABLE airport TYPE string;
+DEFINE FIELD iso_country ON TABLE airport TYPE string;
+DEFINE FIELD iso_region ON TABLE airport TYPE string;
+DEFINE FIELD municipality ON TABLE airport TYPE string;
+DEFINE FIELD itata_code ON TABLE airport TYPE string;
+DEFINE FIELD local_code ON TABLE airport TYPE string;
+DEFINE FIELD gps_code ON TABLE airport TYPE string;
+DEFINE FIELD coordinates ON TABLE airport TYPE string;
+COMMIT TRANSACTION;
+")
+```
+
+We copy the schemaless table "airports" into the schemafull table "airport". It takes 1.2s.
+
+```elixir
+Conn.sql("
+BEGIN TRANSACTION;
+LET $data = (SELECT * FROM airports);
+INSERT INTO airport $data;
+COMMIT TRANSACTION;
+")
+```
+
+Let's query on the indexed column "ident". The same query as above takes 150ms. The performance gain seems modest.
+
+```elixir
+Conn.sql("SELECT * FROM airport WHERE ident = 'SK-151';")
+```
+
 ## Compare with SQLite
 
 We setup the SQLite connection, database and create a table to mirror the CSV file we got. The setup is much heavier than SurrealDB.
@@ -1152,4 +1211,14 @@ We can now stream down the CSV endpoint into an SQLite table:
     |> Stream.run()
   end)
 end)
+```
+
+```elixir
+Repo.aggregate(Airport, :count)
+```
+
+Let's select a row with "ident = SK-151". It takes 11ms.
+
+```elixir
+Repo.get_by(Airport, ident: "SK-151")
 ```
