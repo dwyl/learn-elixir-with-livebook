@@ -1115,7 +1115,7 @@ Mix.install([
 ```elixir
 defmodule SqilteConn do
   def start do
-    Exqlite.Sqlite3.open("test")
+    Exqlite.Sqlite3.open(":memory")
   end
 
   def create_table(conn, table) do
@@ -1161,7 +1161,7 @@ defmodule Repo do
   use Ecto.Repo, adapter: Ecto.Adapters.SQLite3, otp_app: :noop
 end
 
-case Repo.start_link(database: "test", default_chunk_size: 100) do
+case Repo.start_link(database: ":memory", default_chunk_size: 100) do
   {:ok, pid} -> {:ok, pid}
   {:error, {_, pid}} -> {:ok, pid}
 end
